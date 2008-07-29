@@ -89,12 +89,6 @@ Requires:	%{name}-libgcc = %{epoch}:%{version}-%{release}
 Provides:	cpp = %{epoch}:%{version}-%{release}
 %{?with_ada:Provides:	gcc(ada)}
 %{?with_ssp:Provides:	gcc(ssp)}
-# ksi for gcc > 3.3.x not ready yet
-Obsoletes:	cpp
-Obsoletes:	egcs-cpp
-Obsoletes:	gcc-cpp
-Obsoletes:	gcc-ksi
-Obsoletes:	gont
 Conflicts:	glibc-devel < 2.2.5-20
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
@@ -143,7 +137,6 @@ Summary(es):	Biblioteca compartida de gcc
 Summary(pl):	Biblioteka gcc
 Summary(pt_BR):	Biblioteca runtime para o GCC
 Group:		Libraries
-Obsoletes:	libgcc1
 
 %description libgcc
 Shared gcc library.
@@ -164,8 +157,6 @@ Summary(pl):	Obs³uga C++ dla gcc
 Summary(pt_BR):	Suporte C++ para o gcc
 Group:		Development/Languages
 Requires:	%{name} = %{epoch}:%{version}-%{release}
-Obsoletes:	egcc-c++
-Obsoletes:	egcs-c++
 
 %description c++
 This package adds C++ support to the GNU Compiler Collection. It
@@ -215,8 +206,6 @@ Summary(tr):	gcc için Objective C desteði
 Group:		Development/Languages
 Requires:	%{name} = %{epoch}:%{version}-%{release}
 Requires:	%{name}-libobjc = %{epoch}:%{version}-%{release}
-Obsoletes:	egcc-objc
-Obsoletes:	egcs-objc
 
 %description objc
 This package adds Objective C support to the GNU Compiler Collection.
@@ -260,7 +249,6 @@ Summary:	Objective C Libraries
 Summary(es):	Bibliotecas de Objective C
 Summary(pl):	Biblioteki Obiektowego C
 Group:		Libraries
-Obsoletes:	libobjc1
 
 %description libobjc
 Objective C Libraries.
@@ -294,7 +282,6 @@ Summary(pl):	Obs³uga Fortranu 77 dla gcc
 Summary(pt_BR):	Suporte Fortran 77 para o GCC
 Group:		Development/Languages/Fortran
 Requires:	%{name}-libg2c = %{epoch}:%{version}-%{release}
-Obsoletes:	egcs-g77
 
 %description g77
 This package adds support for compiling Fortran 77 programs with the
@@ -397,7 +384,6 @@ Summary(es):	Bibliotecas de clases de Java
 Summary(pl):	Biblioteki Klas Javy
 Group:		Libraries
 Requires:	zlib
-Obsoletes:	libgcj3
 
 %description libgcj
 Java Class Libraries.
@@ -415,7 +401,6 @@ Summary(pl):	Pliki nag³ówkowe dla Bibliotek Klas Javy
 Group:		Development/Libraries
 Requires:	%{name}-java = %{epoch}:%{version}-%{release}
 Requires:	%{name}-libgcj = %{epoch}:%{version}-%{release}
-Obsoletes:	libgcj3-devel
 
 %description libgcj-devel
 Development files for Java Class Libraries.
@@ -449,8 +434,6 @@ Summary(es):	Biblioteca C++ de GNU
 Summary(pl):	Biblioteki GNU C++
 Summary(pt_BR):	Biblioteca C++ GNU
 Group:		Libraries
-Obsoletes:	libg++
-Obsoletes:	libstdc++3
 
 %description libstdc++
 This is the GNU implementation of the standard C++ libraries, along
@@ -497,8 +480,6 @@ Group:		Development/Libraries
 Requires:	%{name}-c++ = %{epoch}:%{version}-%{release}
 Requires:	%{name}-libstdc++ = %{epoch}:%{version}-%{release}
 Requires:	glibc-devel
-Obsoletes:	libg++-devel
-Obsoletes:	libstdc++3-devel
 
 %description libstdc++-devel
 This is the GNU implementation of the standard C++ libraries. This
@@ -598,8 +579,6 @@ Summary(pl):	Obs³uga Ady do gcc
 Group:		Development/Languages
 Requires:	%{name} = %{epoch}:%{version}-%{release}
 Requires:	%{name}-libgnat = %{epoch}:%{version}-%{release}
-Obsoletes:	gcc-gnat
-Obsoletes:	gnat-devel
 
 %description ada
 This package adds experimental support for compiling Ada programs.
@@ -617,8 +596,6 @@ Summary:	Ada standard libraries
 Summary(es):	Bibliotecas estándares de Ada
 Summary(pl):	Biblioteki standardowe dla Ady
 Group:		Libraries
-Obsoletes:	gnat
-Obsoletes:	libgnat1
 
 %description libgnat
 This package contains shared libraries needed to run programs written
@@ -636,7 +613,6 @@ napisanych w Adzie.
 Summary:	Static Ada standard libraries
 Summary(pl):	Statyczne biblioteki standardowe dla Ady
 Group:		Libraries
-Obsoletes:	gnat-static
 
 %description libgnat-static
 This package contains static libraries for programs written in Ada.
