@@ -1,0 +1,25 @@
+    
+    PR libstdc++/18185
+    * libsupc++/eh_globals.cc (get_globals_dtor): Delete unhandled exceptions.
+    
+--- gcc/libstdc++-v3/libsupc++/eh_globals.cc	2004/04/30 04:20:24	1.4.16.1
++++ gcc/libstdc++-v3/libsupc++/eh_globals.cc	2004/11/08 17:41:19	1.4.16.2
+@@ -48,7 +48,17 @@
+ get_globals_dtor (void *ptr)
+ {
+   if (ptr)
+-    std::free (ptr);
++    {
++      __cxa_exception *exn, *next;
++      exn = ((__cxa_eh_globals *) ptr)->caughtExceptions;
++      while (exn)
++	{
++	  next = exn->nextException;
++	  _Unwind_DeleteException (&exn->unwindHeader);
++	  exn = next;
++	}
++      std::free (ptr);
++    }
+ }
+ 
+ static void

@@ -1,0 +1,356 @@
+2004-12-03  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR c++/16276
+	* configure.ac: Check if assembler supports COMDAT group. 
+	* configure: Regenerated.
+	* config.in: Likewise.
+
+	* final.c (final_scan_insn): When generating jump table, call
+	readonly_data_section_in_function_group instead of
+	readonly_data_section if HAVE_GAS_COMDAT_GROUP is defined.
+
+	* output.h (elf_comdat_group): New.
+	(readonly_data_section_in_function_group): Likewise.
+
+	* varasm.c (readonly_data_section_in_function_group): New.
+	(elf_comdat_group): Likewise.
+	(default_elf_asm_named_section): Use COMDAT group if
+	HAVE_GAS_COMDAT_GROUP is defined.
+	* config/arm/arm.c (arm_elf_asm_named_section): Likewise.
+
+	* config/sparc/sysv4.h (TARGET_ASM_NAMED_SECTION): Define only
+	if HAVE_GAS_COMDAT_GROUP is not defined.
+
+--- gcc/config.in.comdat	2004-12-03 09:15:49.000000000 -0800
++++ gcc/config.in	2004-12-03 09:15:50.000000000 -0800
+@@ -252,6 +252,9 @@
+ /* Define if your assembler supports .balign and .p2align. */
+ #undef HAVE_GAS_BALIGN_AND_P2ALIGN
+ 
++/* Define 0/1 if your assembler supports COMDAT group. */
++#undef HAVE_GAS_COMDAT_GROUP
++
+ /* Define if your assembler uses the new HImode fild and fist notation. */
+ #undef HAVE_GAS_FILDS_FISTS
+ 
+--- gcc/config/arm/arm.c.comdat	2004-04-30 10:36:39.000000000 -0700
++++ gcc/config/arm/arm.c	2004-12-03 09:15:50.000000000 -0800
+@@ -13156,12 +13156,15 @@ static void
+ arm_elf_asm_named_section (const char *name, unsigned int flags)
+ {
+   char flagchars[10], *f = flagchars;
++  const char *section_name = NULL, *group_name = NULL;
+ 
++#ifndef HAVE_GAS_COMDAT_GROUP
+   if (! named_section_first_declaration (name))
+     {
+       fprintf (asm_out_file, "\t.section\t%s\n", name);
+       return;
+     }
++#endif
+ 
+   if (!(flags & SECTION_DEBUG))
+     *f++ = 'a';
+@@ -13177,9 +13180,17 @@ arm_elf_asm_named_section (const char *n
+     *f++ = 'S';
+   if (flags & SECTION_TLS)
+     *f++ = 'T';
++#ifdef HAVE_GAS_COMDAT_GROUP
++  if (elf_comdat_group (name, &section_name, &group_name))
++    *f++ = 'G';
++#endif
+   *f = '\0';
+ 
+-  fprintf (asm_out_file, "\t.section\t%s,\"%s\"", name, flagchars);
++  if (section_name)
++    fprintf (asm_out_file, "\t.section\t%s,\"%s\"", section_name,
++	     flagchars);
++  else
++    fprintf (asm_out_file, "\t.section\t%s,\"%s\"", name, flagchars);
+ 
+   if (!(flags & SECTION_NOTYPE))
+     {
+@@ -13196,6 +13207,9 @@ arm_elf_asm_named_section (const char *n
+ 	fprintf (asm_out_file, ",%d", flags & SECTION_ENTSIZE);
+     }
+ 
++  if (group_name)
++    fprintf (asm_out_file, ",%s,comdat", group_name);
++
+   putc ('\n', asm_out_file);
+ }
+ #endif
+--- gcc/config/sparc/sysv4.h.comdat	2003-06-17 17:03:32.000000000 -0700
++++ gcc/config/sparc/sysv4.h	2004-12-03 09:15:50.000000000 -0800
+@@ -150,9 +150,13 @@ do { ASM_OUTPUT_ALIGN ((FILE), Pmode == 
+ #undef DTORS_SECTION_ASM_OP
+ #define DTORS_SECTION_ASM_OP    "\t.section\t\".dtors\",#alloc,#write"
+ 
++/* COMDAT group cannot be expressed in SPARC's section attributes
++   encoding style.  */
++#ifndef HAVE_GAS_COMDAT_GROUP
+ /* Switch into a generic section.  */
+ #undef TARGET_ASM_NAMED_SECTION
+ #define TARGET_ASM_NAMED_SECTION  sparc_elf_asm_named_section
++#endif
+ 
+ #undef ASM_OUTPUT_ALIGNED_BSS
+ #define ASM_OUTPUT_ALIGNED_BSS(FILE, DECL, NAME, SIZE, ALIGN) \
+--- gcc/configure.ac.comdat	2004-12-03 09:15:49.000000000 -0800
++++ gcc/configure.ac	2004-12-03 09:22:29.000000000 -0800
+@@ -1913,8 +1913,12 @@ changequote(,)dnl
+ 	-e 's,^.*[	 ]\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$,\1,p' \
+ 	-e 's,^.*[	 ]\([0-9][0-9]*\.[0-9][0-9]*\)[	 ].*$,\1,p' \
+ 	-e 's,^.*[	 ]\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[	 ].*$,\1,p' \
+-	-e 's,^.*[	 ]\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[	 ].*$,\1,p'`
++	-e 's,^.*[ 	 ]\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[ 	].*$,\1,p' \
++	-e 's,^.*[	 ]\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[	 ].*$,\1,p'`
+     ld_date=`echo $ld_ver | sed -n 's,^.*\([2-9][0-9][0-9][0-9]\)[-]*\([01][0-9]\)[-]*\([0-3][0-9]\).*$,\1\2\3,p'`
++    ld_vers_major=`expr "$ld_vers" : '\([0-9]*\)'`
++    ld_vers_minor=`expr "$ld_vers" : '[0-9]*\.\([0-9]*\)'`
++    ld_vers_patch=`expr "$ld_vers" : '[0-9]*\.[0-9]*\.\([0-9]*\)'`
+     if test 0"$ld_date" -lt 20020404; then
+       if test -n "$ld_date"; then
+ 	# If there was date string, but was earlier than 2002-04-04, fail
+@@ -1923,9 +1927,6 @@ changequote(,)dnl
+ 	# If there was no date string nor ld version number, something is wrong
+ 	gcc_cv_ld_hidden=no
+       else
+-	ld_vers_major=`expr "$ld_vers" : '\([0-9]*\)'`
+-	ld_vers_minor=`expr "$ld_vers" : '[0-9]*\.\([0-9]*\)'`
+-	ld_vers_patch=`expr "$ld_vers" : '[0-9]*\.[0-9]*\.\([0-9]*\)'`
+ 	test -z "$ld_vers_patch" && ld_vers_patch=0
+ 	if test "$ld_vers_major" -lt 2; then
+ 	  gcc_cv_ld_hidden=no
+@@ -2060,6 +2061,39 @@ AC_DEFINE_UNQUOTED(HAVE_GAS_SHF_MERGE,
+   [`if test $gcc_cv_as_shf_merge = yes; then echo 1; else echo 0; fi`],
+ [Define 0/1 if your assembler supports marking sections with SHF_MERGE flag.])
+ 
++gcc_GAS_CHECK_FEATURE(COMDAT group support, gcc_cv_as_comdat_group,
++ [elf,2,15,92], [--fatal-warnings],
++ [.section .text,"axG",@progbits,.foo,comdat])
++if test $gcc_cv_as_comdat_group = yes; then
++  gcc_cv_as_comdat_group_percent=no
++else
++ gcc_GAS_CHECK_FEATURE(COMDAT group support, gcc_cv_as_comdat_group_percent,
++   [elf,2,15,92], [--fatal-warnings],
++   [.section .text,"axG",%progbits,.foo,comdat])
++fi
++if test $in_tree_ld != yes && test x"$ld_vers" != x; then
++  comdat_group=yes
++  if test 0"$ld_date" -lt 20040727; then
++    if test -n "$ld_date"; then
++      # If there was date string, but was earlier than 2002-07-27, fail
++      comdat_group=no
++    elif test "$ld_vers_major" -lt 2; then
++      comdat_group=no
++    elif test "$ld_vers_major" -eq 2 -a "$ld_vers_minor" -lt 15; then
++      comdat_group=no
++    elif test "$ld_vers_major" -eq 2 -a "$ld_vers_minor" -eq 15 -a "$ld_vers_patch" -lt 92; then
++      comdat_group=no
++    fi
++  fi
++  if test $comdat_group = no; then
++    gcc_cv_as_comdat_group=no
++    gcc_cv_as_comdat_group_percent=no
++  fi
++fi
++AC_DEFINE_UNQUOTED(HAVE_GAS_COMDAT_GROUP,
++  [`if test $gcc_cv_as_comdat_group = yes || test $gcc_cv_as_comdat_group_percent = yes; then echo 1; else echo 0; fi`],
++[Define 0/1 if your assembler supports COMDAT group.])
++
+ # Thread-local storage - the check is heavily parametrized.
+ conftest_s=
+ tls_first_major=
+--- gcc/final.c.comdat	2004-02-23 13:24:09.000000000 -0800
++++ gcc/final.c	2004-12-03 09:15:50.000000000 -0800
+@@ -1881,7 +1881,12 @@ final_scan_insn (rtx insn, FILE *file, i
+ 		{
+ 		  int log_align;
+ 
++#ifdef HAVE_GAS_COMDAT_GROUP
++		  readonly_data_section_in_function_group
++		    (current_function_decl);
++#else
+ 		  readonly_data_section ();
++#endif
+ 
+ #ifdef ADDR_VEC_ALIGN
+ 		  log_align = ADDR_VEC_ALIGN (NEXT_INSN (insn));
+--- gcc/output.h.comdat	2004-03-26 09:25:41.000000000 -0800
++++ gcc/output.h	2004-12-03 09:15:50.000000000 -0800
+@@ -475,6 +475,9 @@ extern void no_asm_to_stream (FILE *);
+ #define SECTION_NOTYPE	 0x80000	/* don't output @progbits */
+ #define SECTION_MACH_DEP 0x100000	/* subsequent bits reserved for target */
+ 
++extern const char *elf_comdat_group (const char *, const char **,
++				     const char **);
++extern void readonly_data_section_in_function_group (tree);
+ extern unsigned int get_named_section_flags (const char *);
+ extern bool set_named_section_flags (const char *, unsigned int);
+ extern void named_section_flags (const char *, unsigned int);
+--- gcc/varasm.c.comdat	2004-11-01 14:04:58.000000000 -0800
++++ gcc/varasm.c	2004-12-03 09:30:54.005496029 -0800
+@@ -259,6 +259,35 @@ data_section (void)
+     }
+ }
+ 
++#ifdef HAVE_GAS_COMDAT_GROUP
++
++/* Tell assembler to switch to read-only data section in the same
++   comdat group as DECL.  */
++
++void
++readonly_data_section_in_function_group (tree decl)
++{
++  if (decl == NULL_TREE || !DECL_P (decl))
++    abort ();
++
++  if (DECL_SECTION_NAME (decl) == NULL_TREE || ! DECL_ONE_ONLY (decl))
++    readonly_data_section ();
++  else
++    {
++      char *rodata;
++      const char *name = TREE_STRING_POINTER (DECL_SECTION_NAME (decl));
++
++      if (strncmp (name, ".gnu.linkonce.t.", 16) != 0)
++	abort ();
++
++      rodata = xstrdup (name);
++      rodata [14] = 'r';
++      named_section_flags (rodata, 0);
++      free (rodata);
++    }
++}
++#endif
++
+ /* Tell assembler to switch to read-only data section.  This is normally
+    the text section.  */
+ 
+@@ -4651,16 +4680,97 @@ default_no_named_section (const char *na
+   abort ();
+ }
+ 
++/* Extract section name and group name from the linkonce section
++   name.  */
++
++const char *
++elf_comdat_group (const char *name, const char **section,
++		  const char **group)
++{
++  const char *p;
++  const char *sec = NULL;
++  static const char *one [] = 
++    {
++      ".bss",		/* 'b'  */
++      NULL,		/* 'c'  */
++      ".data",		/* 'd'  */
++      NULL,		/* 'e'  */
++      NULL,		/* 'f'  */
++      NULL,		/* 'q'  */
++      NULL,		/* 'h'  */
++      NULL,		/* 'i'  */
++      NULL,		/* 'j'  */
++      NULL,		/* 'k'  */
++      NULL,		/* 'l'  */
++      NULL,		/* 'm'  */
++      NULL,		/* 'n'  */
++      NULL,		/* 'o'  */
++      NULL,		/* 'p'  */
++      NULL,		/* 'q'  */
++      ".rodata",	/* 'r'  */
++      ".sdata",		/* 's'  */
++      ".text"		/* 't'  */
++    };
++  
++  if (strncmp (name, ".gnu.linkonce.", 14) != 0)
++    return sec;
++
++  p = name + 14;
++  if (p [1] == '.')
++    {
++      if (p [0] > 'a' && p [0] < 'u')
++	sec = one [p [0] - 'b'];
++
++      if (sec)
++	*group = p + 2;
++    }
++  else if (p [2] == '.')
++    {
++      if (p [0] == 's')
++	{
++	  if (p [1] == '2')
++	    sec = ".sdata2";
++	  else if (p [1] == 'b')
++	    sec = ".sbss";
++	}
++      else if (p [0] == 't')
++	{
++	  if (p [1] == 'b')
++	    sec = ".tbss";
++	  else if (p [1] == 'd')
++	    sec = ".tdata";
++	}
++      else if (p [0] == 'w' && p [1] == 'i')
++	sec = ".debug_info";
++
++      if (sec)
++	*group = p + 3;
++    }
++  else if (strncmp (p, "sb2.", 4) == 0)
++    {
++      sec = ".sbss2";
++      *group = p + 4;
++    }
++
++  if (sec)
++    *section = sec;
++
++  return sec;
++}
++
+ void
+ default_elf_asm_named_section (const char *name, unsigned int flags)
+ {
+   char flagchars[10], *f = flagchars;
++  const char *section_name = NULL, *group_name = NULL;
+ 
++#ifndef HAVE_GAS_COMDAT_GROUP
+   if (! named_section_first_declaration (name))
+     {
+       fprintf (asm_out_file, "\t.section\t%s\n", name);
+       return;
+     }
++#endif
+ 
+   if (!(flags & SECTION_DEBUG))
+     *f++ = 'a';
+@@ -4676,9 +4786,17 @@ default_elf_asm_named_section (const cha
+     *f++ = 'S';
+   if (flags & SECTION_TLS)
+     *f++ = 'T';
++#ifdef HAVE_GAS_COMDAT_GROUP
++  if (elf_comdat_group (name, &section_name, &group_name))
++    *f++ = 'G';
++#endif
+   *f = '\0';
+ 
+-  fprintf (asm_out_file, "\t.section\t%s,\"%s\"", name, flagchars);
++  if (section_name)
++    fprintf (asm_out_file, "\t.section\t%s,\"%s\"", section_name,
++	     flagchars);
++  else
++    fprintf (asm_out_file, "\t.section\t%s,\"%s\"", name, flagchars);
+ 
+   if (!(flags & SECTION_NOTYPE))
+     {
+@@ -4695,6 +4813,9 @@ default_elf_asm_named_section (const cha
+ 	fprintf (asm_out_file, ",%d", flags & SECTION_ENTSIZE);
+     }
+ 
++  if (group_name)
++    fprintf (asm_out_file, ",%s,comdat", group_name);
++
+   putc ('\n', asm_out_file);
+ }
+ 

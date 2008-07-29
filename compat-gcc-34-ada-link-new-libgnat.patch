@@ -1,0 +1,11 @@
+--- gcc-3.4-20040611/gcc/ada/Make-lang.in.orig	2004-06-09 11:20:41.000000000 +0200
++++ gcc-3.4-20040611/gcc/ada/Make-lang.in	2004-06-12 03:38:09.373698608 +0200
+@@ -446,7 +446,7 @@
+ ada/doctools/xgnatugn$(build_exeext): ada/xgnatugn.adb
+ 	-$(MKDIR) ada/doctools
+ 	$(CP) $^ ada/doctools
+-	cd ada/doctools && gnatmake -q xgnatugn
++	cd ada/doctools && gnatmake -q xgnatugn -a0../rts
+ 
+ doc/gnat_ugn_unw.texi : ada/doctools/xgnatugn$(build_exeext) \
+ 	$(srcdir)/ada/gnat_ugn.texi $(srcdir)/ada/ug_words
