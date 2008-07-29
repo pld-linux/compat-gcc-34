@@ -6,8 +6,8 @@
 #
 # Conditional build:
 %bcond_with	ada		# build without ADA support
-%bcond_without	java		# build without Java support
-%bcond_without	objc		# build without ObjC support
+%bcond_with	java		# build without Java support
+%bcond_with	objc		# build without ObjC support
 %bcond_with	ssp		# build with stack-smashing protector support
 %bcond_with	multilib	# build with multilib support
 %ifnarch amd64 ppc64 s390x sparc64
@@ -85,7 +85,7 @@ BuildRequires:	texinfo >= 4.1
 BuildRequires:	zlib-devel
 Requires:	binutils >= 2:2.15.91.0.2
 Requires:	gcc-dirs >= 1.0-3
-Requires:	libgcc = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgcc = %{epoch}:%{version}-%{release}
 Provides:	cpp = %{epoch}:%{version}-%{release}
 %{?with_ada:Provides:	gcc(ada)}
 %{?with_ssp:Provides:	gcc(ssp)}
@@ -137,7 +137,7 @@ z GCC, trzeba zainstalowaæ odpowiedni podpakiet.
 Este pacote adiciona infraestrutura básica e suporte a linguagem C ao
 GNU Compiler Collection.
 
-%package -n libgcc
+%package libgcc
 Summary:	Shared gcc library
 Summary(es):	Biblioteca compartida de gcc
 Summary(pl):	Biblioteka gcc
@@ -145,16 +145,16 @@ Summary(pt_BR):	Biblioteca runtime para o GCC
 Group:		Libraries
 Obsoletes:	libgcc1
 
-%description -n libgcc
+%description libgcc
 Shared gcc library.
 
-%description -n libgcc -l es
+%description libgcc -l es
 Biblioteca compartida de gcc.
 
-%description -n libgcc -l pl
+%description libgcc -l pl
 Biblioteka dynamiczna gcc.
 
-%description -n libgcc -l pt_BR
+%description libgcc -l pt_BR
 Biblioteca runtime para o GCC.
 
 %package c++
@@ -214,7 +214,7 @@ Summary(pl):	Obs³uga obiektowego C dla kompilatora gcc
 Summary(tr):	gcc için Objective C desteði
 Group:		Development/Languages
 Requires:	%{name} = %{epoch}:%{version}-%{release}
-Requires:	libobjc = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libobjc = %{epoch}:%{version}-%{release}
 Obsoletes:	egcc-objc
 Obsoletes:	egcs-objc
 
@@ -255,36 +255,36 @@ C dilinin nesne yönelik bir türevidir ve NeXTSTEP altýnda çalýþan
 sistemlerde yaygýn olarak kullanýlýr. Standart Objective C nesne
 kitaplýðý bu pakette yer almaz.
 
-%package -n libobjc
+%package libobjc
 Summary:	Objective C Libraries
 Summary(es):	Bibliotecas de Objective C
 Summary(pl):	Biblioteki Obiektowego C
 Group:		Libraries
 Obsoletes:	libobjc1
 
-%description -n libobjc
+%description libobjc
 Objective C Libraries.
 
-%description -n libobjc -l es
+%description libobjc -l es
 Bibliotecas de Objective C.
 
-%description -n libobjc -l pl
+%description libobjc -l pl
 Biblioteki Obiektowego C.
 
-%package -n libobjc-static
+%package libobjc-static
 Summary:	Static Objective C Libraries
 Summary(es):	Bibliotecas estáticas de Objective C
 Summary(pl):	Statyczne Biblioteki Obiektowego C
 Group:		Development/Libraries
-Requires:	libobjc = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libobjc = %{epoch}:%{version}-%{release}
 
-%description -n libobjc-static
+%description libobjc-static
 Static Objective C Libraries.
 
-%description -n libobjc-static -l es
+%description libobjc-static -l es
 Bibliotecas estáticas de Objective C.
 
-%description -n libobjc-static -l pl
+%description libobjc-static -l pl
 Statyczne biblioteki Obiektowego C.
 
 %package g77
@@ -293,7 +293,7 @@ Summary(es):	Soporte de Fortran 77 para gcc
 Summary(pl):	Obs³uga Fortranu 77 dla gcc
 Summary(pt_BR):	Suporte Fortran 77 para o GCC
 Group:		Development/Languages/Fortran
-Requires:	libg2c = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libg2c = %{epoch}:%{version}-%{release}
 Obsoletes:	egcs-g77
 
 %description g77
@@ -311,35 +311,35 @@ potrzebny do kompilowania programów pisanych w jêzyku Fortran 77.
 %description g77 -l pt_BR
 Suporte Fortran 77 para o GCC.
 
-%package -n libg2c
+%package libg2c
 Summary:	Fortran 77 Libraries
 Summary(es):	Bibliotecas de Fortran 77
 Summary(pl):	Biblioteki Fortranu 77
 Group:		Libraries
 
-%description -n libg2c
+%description libg2c
 Fortran 77 Libraries.
 
-%description -n libg2c -l es
+%description libg2c -l es
 Bibliotecas de Fortran 77.
 
-%description -n libg2c -l pl
+%description libg2c -l pl
 Biblioteki Fortranu 77.
 
-%package -n libg2c-static
+%package libg2c-static
 Summary:	Static Fortran 77 Libraries
 Summary(es):	Bibliotecas estáticas de Fortran 77
 Summary(pl):	Statyczne Biblioteki Fortranu 77
 Group:		Development/Libraries
-Requires:	libg2c = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libg2c = %{epoch}:%{version}-%{release}
 
-%description -n libg2c-static
+%description libg2c-static
 Static Fortran 77 Libraries.
 
-%description -n libg2c -l es
+%description libg2c -l es
 Bibliotecas estáticas de Fortran 77.
 
-%description -n libg2c-static -l pl
+%description libg2c-static -l pl
 Statyczne biblioteki Fortranu 77.
 
 %package java
@@ -348,8 +348,8 @@ Summary(es):	Soporte de Java para gcc
 Summary(pl):	Obs³uga Javy dla gcc
 Group:		Development/Languages/Java
 Requires:	%{name} = %{epoch}:%{version}-%{release}
-Requires:	libgcj = %{epoch}:%{version}-%{release}
-Requires:	libgcj-devel = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgcj = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgcj-devel = %{epoch}:%{version}-%{release}
 Requires:	java-shared
 Provides:	gcj = %{epoch}:%{version}-%{release}
 
@@ -391,7 +391,7 @@ implementación de Java(tm), como rmic o jar.
 Pakiet ten zawiera narzêdzia wspólne dla ka¿dej implementacji
 Javy(tm), takie jak rmic czy jar.
 
-%package -n libgcj
+%package libgcj
 Summary:	Java Class Libraries
 Summary(es):	Bibliotecas de clases de Java
 Summary(pl):	Biblioteki Klas Javy
@@ -399,51 +399,51 @@ Group:		Libraries
 Requires:	zlib
 Obsoletes:	libgcj3
 
-%description -n libgcj
+%description libgcj
 Java Class Libraries.
 
-%description -n libgcj -l es
+%description libgcj -l es
 Bibliotecas de clases de Java.
 
-%description -n libgcj -l pl
+%description libgcj -l pl
 Biblioteki Klas Javy.
 
-%package -n libgcj-devel
+%package libgcj-devel
 Summary:	Development files for Java Class Libraries
 Summary(es):	Ficheros de desarrollo para las bibliotecas de clases de Java
 Summary(pl):	Pliki nag³ówkowe dla Bibliotek Klas Javy
 Group:		Development/Libraries
 Requires:	%{name}-java = %{epoch}:%{version}-%{release}
-Requires:	libgcj = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgcj = %{epoch}:%{version}-%{release}
 Obsoletes:	libgcj3-devel
 
-%description -n libgcj-devel
+%description libgcj-devel
 Development files for Java Class Libraries.
 
-%description -n libgcj-devel -l es
+%description libgcj-devel -l es
 Ficheros de desarrollo para las bibliotecas de clases de Java.
 
-%description -n libgcj-devel -l pl
+%description libgcj-devel -l pl
 Pliki nag³ówkowe dla Bibliotek Klas Javy.
 
-%package -n libgcj-static
+%package libgcj-static
 Summary:	Static Java Class Libraries
 Summary(es):	Bibliotecas estáticas de clases de Java
 Summary(pl):	Statyczne Biblioteki Klas Javy
 Group:		Development/Libraries
-Requires:	libgcj-devel = %{epoch}:%{version}-%{release}
-Requires:	libstdc++-devel = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgcj-devel = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libstdc++-devel = %{epoch}:%{version}-%{release}
 
-%description -n libgcj-static
+%description libgcj-static
 Static Java Class Libraries.
 
-%description -n libgcj-static -l es
+%description libgcj-static -l es
 Bibliotecas estáticas de clases de Java.
 
-%description -n libgcj-static -l pl
+%description libgcj-static -l pl
 Statyczne Biblioteki Klas Javy.
 
-%package -n libstdc++
+%package libstdc++
 Summary:	GNU c++ library
 Summary(es):	Biblioteca C++ de GNU
 Summary(pl):	Biblioteki GNU C++
@@ -452,40 +452,40 @@ Group:		Libraries
 Obsoletes:	libg++
 Obsoletes:	libstdc++3
 
-%description -n libstdc++
+%description libstdc++
 This is the GNU implementation of the standard C++ libraries, along
 with additional GNU tools. This package includes the shared libraries
 necessary to run C++ applications.
 
-%description -n libstdc++ -l de
+%description libstdc++ -l de
 Dies ist die GNU-Implementierung der Standard-C++-Libraries mit
 weiteren GNU-Tools. Dieses Paket enthält die zum Ausführen von
 C++-Anwendungen erforderlichen gemeinsam genutzten Libraries.
 
-%description -n libstdc++ -l es
+%description libstdc++ -l es
 Este es el soporte de las bibliotecas padrón del C++, junto con
 herramientas GNU adicionales. El paquete incluye las bibliotecas
 compartidas necesarias para ejecutar aplicaciones C++.
 
-%description -n libstdc++ -l fr
+%description libstdc++ -l fr
 Ceci est l'implémentation GNU des librairies C++ standard, ainsi que
 des outils GNU supplémentaires. Ce package comprend les librairies
 partagées nécessaires à l'exécution d'application C++.
 
-%description -n libstdc++ -l pl
+%description libstdc++ -l pl
 Pakiet ten zawiera biblioteki bêd±ce implementacj± standardowych
 bibliotek C++. Znajduj± siê w nim biblioteki dynamiczne niezbêdne do
 uruchomienia aplikacji napisanych w C++.
 
-%description -n libstdc++ -l pt_BR
+%description libstdc++ -l pt_BR
 Este pacote é uma implementação da biblioteca padrão C++ v3, um
 subconjunto do padrão ISO 14882.
 
-%description -n libstdc++ -l tr
+%description libstdc++ -l tr
 Bu paket, standart C++ kitaplýklarýnýn GNU gerçeklemesidir ve C++
 uygulamalarýnýn koþturulmasý için gerekli kitaplýklarý içerir.
 
-%package -n libstdc++-devel
+%package libstdc++-devel
 Summary:	Header files and documentation for C++ development
 Summary(de):	Header-Dateien zur Entwicklung mit C++
 Summary(es):	Ficheros de cabecera y documentación para desarrollo C++
@@ -495,100 +495,100 @@ Summary(pt_BR):	Arquivos de inclusão e bibliotecas para o desenvolvimento em C++
 Summary(tr):	C++ ile program geliþtirmek için gerekli dosyalar
 Group:		Development/Libraries
 Requires:	%{name}-c++ = %{epoch}:%{version}-%{release}
-Requires:	libstdc++ = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libstdc++ = %{epoch}:%{version}-%{release}
 Requires:	glibc-devel
 Obsoletes:	libg++-devel
 Obsoletes:	libstdc++3-devel
 
-%description -n libstdc++-devel
+%description libstdc++-devel
 This is the GNU implementation of the standard C++ libraries. This
 package includes the header files needed for C++ development and
 library documentation.
 
-%description -n libstdc++-devel -l es
+%description libstdc++-devel -l es
 Este es el soporte de las bibliotecas padrón del lenguaje C++. Este
 paquete incluye los archivos de inclusión y bibliotecas necesarios
 para desarrollo de programas en lenguaje C++.
 
-%description -n libstdc++-devel -l pl
+%description libstdc++-devel -l pl
 Pakiet ten zawiera biblioteki bêd±ce implementacj± standardowych
 bibliotek C++. Znajduj± siê w nim pliki nag³ówkowe wykorzystywane przy
 programowaniu w jêzyku C++ oraz dokumentacja biblioteki standardowej.
 
-%description -n libstdc++-devel -l pt_BR
+%description libstdc++-devel -l pt_BR
 Este pacote inclui os arquivos de inclusão e bibliotecas necessárias
 para desenvolvimento de programas C++.
 
-%package -n libstdc++-static
+%package libstdc++-static
 Summary:	Static C++ standard library
 Summary(es):	Biblioteca estándar estática de C++
 Summary(pl):	Statyczna biblioteka standardowa C++
 Group:		Development/Libraries
-Requires:	libstdc++-devel = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libstdc++-devel = %{epoch}:%{version}-%{release}
 
-%description -n libstdc++-static
+%description libstdc++-static
 Static C++ standard library.
 
-%description -n libstdc++-static -l es
+%description libstdc++-static -l es
 Biblioteca estándar estática de C++.
 
-%description -n libstdc++-static -l pl
+%description libstdc++-static -l pl
 Statyczna biblioteka standardowa C++.
 
-%package -n libffi
+%package libffi
 Summary:	Foreign Function Interface library
 Summary(es):	Biblioteca de interfaz de funciones ajenas
 Summary(pl):	Biblioteka zewnêtrznych wywo³añ funkcji
 Group:		Libraries
 
-%description -n libffi
+%description libffi
 The libffi library provides a portable, high level programming
 interface to various calling conventions. This allows a programmer to
 call any function specified by a call interface description at run
 time.
 
-%description -n libffi -l es
+%description libffi -l es
 La biblioteca libffi provee una interfaz portable de programación de
 alto nivel para varias convenciones de llamada. Ello permite que un
 programador llame una función cualquiera especificada por una
 descripción de interfaz de llamada en el tiempo de ejecución.
 
-%description -n libffi -l pl
+%description libffi -l pl
 Biblioteka libffi dostarcza przeno¶nego, wysokopoziomowego
 miêdzymordzia do ró¿nych konwencji wywo³añ funkcji. Pozwala to
 programi¶cie wywo³ywaæ dowolne funkcje podaj±c konwencjê wywo³ania w
 czasie wykonania.
 
-%package -n libffi-devel
+%package libffi-devel
 Summary:	Development files for Foreign Function Interface library
 Summary(es):	Ficheros de desarrollo para libffi
 Summary(pl):	Pliki nag³ówkowe dla libffi
 Group:		Development/Libraries
-Requires:	libffi = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libffi = %{epoch}:%{version}-%{release}
 
-%description -n libffi-devel
+%description libffi-devel
 Development files for Foreign Function Interface library.
 
-%description -n libffi-devel -l es
+%description libffi-devel -l es
 Ficheros de desarrollo para libffi.
 
-%description -n libffi-devel -l pl
+%description libffi-devel -l pl
 Pliki nag³ówkowe dla libffi.
 
-%package -n libffi-static
+%package libffi-static
 Summary:	Static Foreign Function Interface library
 Summary(es):	Biblioteca libffi estática
 Summary(pl):	Statyczna biblioteka libffi
 Group:		Development/Libraries
-Requires:	libffi-devel = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libffi-devel = %{epoch}:%{version}-%{release}
 
-%description -n libffi-static
+%description libffi-static
 Static Foreign Function Interface library.
 
-%description -n libffi-static -l es
+%description libffi-static -l es
 Biblioteca libffi estática.
 
-%description -n libffi-static -l pl
+%description libffi-static -l pl
 Statyczna biblioteka libffi.
 
 %package ada
@@ -597,7 +597,7 @@ Summary(es):	Soporte de Ada para gcc
 Summary(pl):	Obs³uga Ady do gcc
 Group:		Development/Languages
 Requires:	%{name} = %{epoch}:%{version}-%{release}
-Requires:	libgnat = %{epoch}:%{version}-%{release}
+Requires:	%{name}-libgnat = %{epoch}:%{version}-%{release}
 Obsoletes:	gcc-gnat
 Obsoletes:	gnat-devel
 
@@ -612,7 +612,7 @@ Ada.
 Ten pakiet dodaje eksperymentalne wsparcie dla kompilacji programów w
 Adzie.
 
-%package -n libgnat
+%package libgnat
 Summary:	Ada standard libraries
 Summary(es):	Bibliotecas estándares de Ada
 Summary(pl):	Biblioteki standardowe dla Ady
@@ -620,28 +620,28 @@ Group:		Libraries
 Obsoletes:	gnat
 Obsoletes:	libgnat1
 
-%description -n libgnat
+%description libgnat
 This package contains shared libraries needed to run programs written
 in Ada.
 
-%description -n libgnat -l es
+%description libgnat -l es
 Este paquete contiene las bibliotecas compartidas necesarias para
 ejecutar programas escritos en Ada.
 
-%description -n libgnat -l pl
+%description libgnat -l pl
 Ten pakiet zawiera biblioteki potrzebne do uruchamiania programów
 napisanych w Adzie.
 
-%package -n libgnat-static
+%package libgnat-static
 Summary:	Static Ada standard libraries
 Summary(pl):	Statyczne biblioteki standardowe dla Ady
 Group:		Libraries
 Obsoletes:	gnat-static
 
-%description -n libgnat-static
+%description libgnat-static
 This package contains static libraries for programs written in Ada.
 
-%description -n libgnat-static -l pl
+%description libgnat-static -l pl
 Ten pakiet zawiera biblioteki statyczne dla programów napisanych w
 Adzie.
 
@@ -865,20 +865,20 @@ rm -rf $RPM_BUILD_ROOT
 %postun java
 [ ! -x /usr/sbin/fix-info-dir ] || /usr/sbin/fix-info-dir -c %{_infodir} >/dev/null 2>&1
 
-%post   -p /sbin/ldconfig -n libgcc
-%postun -p /sbin/ldconfig -n libgcc
-%post   -p /sbin/ldconfig -n libstdc++
-%postun -p /sbin/ldconfig -n libstdc++
-%post   -p /sbin/ldconfig -n libobjc
-%postun -p /sbin/ldconfig -n libobjc
-%post   -p /sbin/ldconfig -n libg2c
-%postun -p /sbin/ldconfig -n libg2c
-%post   -p /sbin/ldconfig -n libgcj
-%postun -p /sbin/ldconfig -n libgcj
-%post   -p /sbin/ldconfig -n libgnat
-%postun -p /sbin/ldconfig -n libgnat
-%post   -p /sbin/ldconfig -n libffi
-%postun -p /sbin/ldconfig -n libffi
+%post   -p /sbin/ldconfig libgcc
+%postun -p /sbin/ldconfig libgcc
+%post   -p /sbin/ldconfig libstdc++
+%postun -p /sbin/ldconfig libstdc++
+%post   -p /sbin/ldconfig libobjc
+%postun -p /sbin/ldconfig libobjc
+%post   -p /sbin/ldconfig libg2c
+%postun -p /sbin/ldconfig libg2c
+%post   -p /sbin/ldconfig libgcj
+%postun -p /sbin/ldconfig libgcj
+%post   -p /sbin/ldconfig libgnat
+%postun -p /sbin/ldconfig libgnat
+%post   -p /sbin/ldconfig libffi
+%postun -p /sbin/ldconfig libffi
 
 %files -f gcc.lang
 %defattr(644,root,root,755)
@@ -937,7 +937,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/gcc/*/*/include/*.h
 %exclude %{_libdir}/gcc/*/*/include/g2c.h
 
-%files -n libgcc
+%files libgcc
 %defattr(644,root,root,755)
 %attr(755,root,root) %{_slibdir}*/lib*.so.*
 %if %{with multilib}
@@ -965,7 +965,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man1/g++.1*
 %lang(ja) %{_mandir}/ja/man1/g++.1*
 
-%files -n libstdc++ -f libstdc++.lang
+%files libstdc++ -f libstdc++.lang
 %defattr(644,root,root,755)
 %doc libstdc++-v3/{ChangeLog,README}
 %attr(755,root,root) %{_libdir}/libstdc++.so.*.*.*
@@ -976,7 +976,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir32}/libstdc++.so.*.*.*
 %endif
 
-%files -n libstdc++-devel
+%files libstdc++-devel
 %defattr(644,root,root,755)
 %doc libstdc++-v3/docs/html
 %dir %{_includedir}/c++
@@ -993,7 +993,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir32}/libstdc++.la
 %endif
 
-%files -n libstdc++-static
+%files libstdc++-static
 %defattr(644,root,root,755)
 %{_libdir}/libstdc++.a
 %ifarch ppc
@@ -1020,7 +1020,7 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %{_libdir}/gcc/*/*/include/objc
 
-%files -n libobjc
+%files libobjc
 %defattr(644,root,root,755)
 %doc libobjc/{ChangeLog,README*}
 %attr(755,root,root) %{_libdir}/libobjc.so.*.*.*
@@ -1031,7 +1031,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir32}/libobjc.so.*.*.*
 %endif
 
-%files -n libobjc-static
+%files libobjc-static
 %defattr(644,root,root,755)
 %{_libdir}/libobjc.a
 %ifarch ppc
@@ -1068,7 +1068,7 @@ rm -rf $RPM_BUILD_ROOT
 %lang(ja) %{_mandir}/ja/man1/g77.1*
 %lang(ja) %{_mandir}/ja/man1/f77.1*
 
-%files -n libg2c
+%files libg2c
 %defattr(644,root,root,755)
 %doc libf2c/{ChangeLog,README,TODO}
 %attr(755,root,root) %{_libdir}/libg2c.so.*.*.*
@@ -1079,7 +1079,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir32}/libg2c.so.*.*.*
 %endif
 
-%files -n libg2c-static
+%files libg2c-static
 %defattr(644,root,root,755)
 %{_libdir}/libg2c.a
 %ifarch ppc
@@ -1116,7 +1116,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man1/jar*
 %{_infodir}/fastjar*
 
-%files -n libgcj
+%files libgcj
 %defattr(644,root,root,755)
 %doc libjava/{ChangeLog,LIBGCJ_LICENSE,NEWS,README,THANKS}
 %attr(755,root,root) %{_bindir}/addr2name.awk
@@ -1127,7 +1127,7 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %{_libdir}/logging.properties
 
-%files -n libgcj-devel
+%files libgcj-devel
 %defattr(644,root,root,755)
 %{_includedir}/java
 %{_includedir}/javax
@@ -1150,7 +1150,7 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %{_pkgconfigdir}/libgcj.pc
 
-%files -n libgcj-static
+%files libgcj-static
 %defattr(644,root,root,755)
 %{_libdir}/lib*cj*.a
 %{_libdir}/lib-org-*.a
@@ -1158,19 +1158,19 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/nof/lib*cj*.a
 %endif
 
-%files -n libffi
+%files libffi
 %defattr(644,root,root,755)
 %doc libffi/{ChangeLog,ChangeLog.libgcj,LICENSE,README}
 %attr(755,root,root) %{_libdir}/libffi-*.so
 
-%files -n libffi-devel
+%files libffi-devel
 %defattr(644,root,root,755)
 %{_libdir}/gcc/*/*/include/ffitarget.h
 %attr(755,root,root) %{_libdir}/libffi.so
 %{_libdir}/libffi.la
 %{_includedir}/ffi.h
 
-%files -n libffi-static
+%files libffi-static
 %defattr(644,root,root,755)
 %{_libdir}/libffi.a
 %endif
@@ -1195,12 +1195,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_datadir}/gnat
 %{_infodir}/gnat*
 
-%files -n libgnat
+%files libgnat
 %defattr(644,root,root,755)
 %attr(755,root,root) %{_libdir}/libgnarl*.so.1
 %attr(755,root,root) %{_libdir}/libgnat*.so.1
 
-%files -n libgnat-static
+%files libgnat-static
 %defattr(644,root,root,755)
 %{_libdir}/gcc/*/*/adalib/libgnarl.a
 %{_libdir}/gcc/*/*/adalib/libgnat.a
