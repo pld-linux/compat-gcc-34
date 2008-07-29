@@ -904,7 +904,7 @@ rm -rf $RPM_BUILD_ROOT
 %lang(ja) %{_mandir}/ja/man1/gcc.1*
 %{_mandir}/man1/gcov.1*
 
-%{_infodir}/cpp*
+#%{_infodir}/cpp*
 %{_infodir}/gcc*
 
 %attr(755,root,root) /lib/cpp
@@ -1047,7 +1047,7 @@ rm -rf $RPM_BUILD_ROOT
 %doc gcc/f/{BUGS,ChangeLog,NEWS}
 %attr(755,root,root) %{_bindir}/g77
 %attr(755,root,root) %{_bindir}/f77
-%{_infodir}/g77*
+#%{_infodir}/g77*
 %attr(755,root,root) %{_libdir}/gcc/*/*/f771
 %{_libdir}/libfrtbegin.a
 %{_libdir}/libg2c.la
