@@ -5,6 +5,8 @@
 #		- http://gcc.gnu.org/PR18378 (regression)
 #
 # Conditional build:
+%bcond_without	cxx
+%bcond_with	fortran
 %bcond_with	ada		# build without ADA support
 %bcond_with	java		# build without Java support
 %bcond_with	objc		# build without ObjC support
@@ -25,8 +27,6 @@ License:	GPL
 Group:		Development/Languages
 Source0:	ftp://gcc.gnu.org/pub/gcc/releases/gcc-%{version}/gcc-%{version}.tar.bz2
 # Source0-md5:	e744b30c834360fccac41eb7269a3011
-Source1:	http://ep09.pld-linux.org/~djrzulf/gcc33/gcc-non-english-man-pages.tar.bz2
-# Source1-md5:	4736f3422ddfb808423b745629acc321
 Source2:	http://www.trl.ibm.com/projects/security/ssp/gcc2_95_3/gcc_stack_protect.m4.gz
 # Source2-md5:	07d93ad5fc07ca44cdaba46c658820de
 Source3:	%{name}-gcc_visibility.m4
@@ -85,7 +85,6 @@ BuildRequires:	texinfo >= 4.1
 BuildRequires:	zlib-devel
 Requires:	binutils >= 2:2.15.91.0.2
 Requires:	gcc-dirs >= 1.0-3
-Requires:	%{name}-libgcc = %{epoch}:%{version}-%{release}
 Provides:	cpp = %{epoch}:%{version}-%{release}
 %{?with_ada:Provides:	gcc(ada)}
 %{?with_ssp:Provides:	gcc(ssp)}
@@ -622,7 +621,7 @@ Ten pakiet zawiera biblioteki statyczne dla programów napisanych w
 Adzie.
 
 %prep
-%setup -q -a1 -n gcc-%{version}
+%setup -q -n gcc-%{version}
 
 %patch0 -p1
 %patch1 -p1
@@ -678,10 +677,12 @@ TEXCONFIG=false \
 	--libexecdir=%{_libdir} \
 	--infodir=%{_infodir} \
 	--mandir=%{_mandir} \
+	--program-suffix="-3.4" \
+	--enable-version-specific-runtime-libs \
 	--enable-shared \
 	--enable-threads=posix \
 	--enable-__cxa_atexit \
-	--enable-languages="c,c++,f77%{?with_objc:,objc}%{?with_ada:,ada}%{?with_java:,java}" \
+	--enable-languages="c%{?with_cxx:,c++}%{?with_fortran:,f77}%{?with_objc:,objc}%{?with_ada:,ada}%{?with_java:,java}" \
 	--enable-c99 \
 	--enable-long-long \
 %ifnarch ppc
@@ -747,11 +748,13 @@ ln -f $RPM_BUILD_ROOT%{_bindir}/sparc64-pld-linux-gcc \
 	$RPM_BUILD_ROOT%{_bindir}/sparc-pld-linux-gcc
 %endif
 
-ln -sf gcc $RPM_BUILD_ROOT%{_bindir}/cc
-echo ".so gcc.1" > $RPM_BUILD_ROOT%{_mandir}/man1/cc.1
+ln -sf gcc-3.4 $RPM_BUILD_ROOT%{_bindir}/cc-3.4
+echo ".so gcc-3.4.1" > $RPM_BUILD_ROOT%{_mandir}/man1/cc-3.4.1
 
-ln -sf g77 $RPM_BUILD_ROOT%{_bindir}/f77
-echo ".so g77.1" > $RPM_BUILD_ROOT%{_mandir}/man1/f77.1
+%if %{with fortran}
+ln -sf g77-3.4 $RPM_BUILD_ROOT%{_bindir}/f77-3.4
+echo ".so g77-3.4.1" > $RPM_BUILD_ROOT%{_mandir}/man1/f77-3.4.1
+%endif
 
 %if %{with ada}
 # move ada shared libraries to proper place...
@@ -764,8 +767,6 @@ ln -sf libgnarl-3.4.so.1 $RPM_BUILD_ROOT%{_libdir}/libgnarl-3.4.so
 ln -sf libgnat-3.4.so $RPM_BUILD_ROOT%{_libdir}/libgnat.so
 ln -sf libgnarl-3.4.so $RPM_BUILD_ROOT%{_libdir}/libgnarl.so
 %endif
-
-ln -sf %{_bindir}/cpp $RPM_BUILD_ROOT/lib/cpp
 
 cd ..
 
@@ -781,26 +782,16 @@ cp -f libffi/LICENSE java-doc/LICENSE.libffi
 cp -f libobjc/README gcc/objc/README.libobjc
 %endif
 
-# avoid -L poisoning in *.la - there should be only -L%{_libdir}/gcc/*/%{version}
-for f in libstdc++.la libsupc++.la %{?with_java:libgcj.la} ; do
-	perl -pi -e 's@-L[^ ]*[acs.] @@g' $RPM_BUILD_ROOT%{_libdir}/$f
-done
-# normalize libdir, to avoid propagation of unnecessary RPATHs by libtool
-for f in libstdc++.la libsupc++.la libg2c.la \
-	%{?with_java:libgcj.la lib-org-w3c-dom.la lib-org-xml-sax.la libffi.la} \
-	%{?with_objc:libobjc.la}; do
-	perl -pi -e "s@^libdir='.*@libdir='/usr/%{_lib}'@" $RPM_BUILD_ROOT%{_libdir}/$f
-done
-
-bzip2 -dc %{SOURCE1} | tar xf - -C $RPM_BUILD_ROOT%{_mandir}
-mv -f $RPM_BUILD_ROOT%{_mandir}/ja/man1/{cccp,cpp}.1
-
 # include/ contains install-tools/include/* and headers that were fixed up
 # by fixincludes, we don't want former
 gccdir=$(echo $RPM_BUILD_ROOT%{_libdir}/gcc/*/*/)
 mkdir $gccdir/tmp
 # we have to save these however
-mv -f $gccdir/include/{%{?with_objc:objc,}g2c.h,syslimits.h%{?with_java:,libffi/ffitarget.h,gcj}} $gccdir/tmp
+mv -f $gccdir/include/syslimits.h $gccdir/tmp
+%{?with_cxx:mv -f $gccdir/include/c++ $gccdir/tmp}
+%{?with_fortran:mv -f $gccdir/include/g2c.h $gccdir/tmp}
+%{?with_objc:mv -f $gccdir/include/objc $gccdir/tmp}
+%{?with_java:mv -f $gccdir/include/{libffi/ffitarget.h,gcj} $gccdir/tmp}
 rm -rf $gccdir/include
 mv -f $gccdir/tmp $gccdir/include
 cp $gccdir/install-tools/include/*.h $gccdir/include
@@ -811,9 +802,6 @@ rm -rf $gccdir/install-tools
 ln -sf %{_slibdir}/libgcc_s.so.1 $gccdir/libgcc_s.so
 ln -sf %{_slibdir32}/libgcc_s.so.1 $gccdir/libgcc_s_32.so
 %endif
-
-%find_lang gcc
-%find_lang libstdc\+\+
 
 %if %{with ssp}
 zcat %{SOURCE2} > $RPM_BUILD_ROOT%{_aclocaldir}/gcc_stack_protect.m4
@@ -856,7 +844,7 @@ rm -rf $RPM_BUILD_ROOT
 %post   -p /sbin/ldconfig libffi
 %postun -p /sbin/ldconfig libffi
 
-%files -f gcc.lang
+%files
 %defattr(644,root,root,755)
 %doc ChangeLog.general MAINTAINERS NEWS bugs.html faq.html
 %doc gcc/{ChangeLog,ONEWS,README.Portability}
@@ -866,24 +854,16 @@ rm -rf $RPM_BUILD_ROOT
 %{_aclocaldir}/gcc_visibility.m4
 
 %attr(755,root,root) %{_bindir}/*-gcc*
-%attr(755,root,root) %{_bindir}/gcc
-%attr(755,root,root) %{_bindir}/gccbug
-%attr(755,root,root) %{_bindir}/gcov
-%attr(755,root,root) %{_bindir}/cc
-%attr(755,root,root) %{_bindir}/cpp
+%attr(755,root,root) %{_bindir}/gcc-*
+%attr(755,root,root) %{_bindir}/gccbug-*
+%attr(755,root,root) %{_bindir}/gcov-*
+%attr(755,root,root) %{_bindir}/cc-*
+%attr(755,root,root) %{_bindir}/cpp-*
 
-%{_mandir}/man1/cc.1*
-%{_mandir}/man1/cpp.1*
-%lang(ja) %{_mandir}/ja/man1/cpp.1*
-%{_mandir}/man1/gcc.1*
-%lang(fr) %{_mandir}/fr/man1/gcc.1*
-%lang(ja) %{_mandir}/ja/man1/gcc.1*
-%{_mandir}/man1/gcov.1*
-
-#%{_infodir}/cpp*
-%{_infodir}/gcc*
-
-%attr(755,root,root) /lib/cpp
+%{_mandir}/man1/cc-*.1*
+%{_mandir}/man1/cpp-*.1*
+%{_mandir}/man1/gcc-*.1*
+%{_mandir}/man1/gcov-*.1*
 
 %attr(755,root,root) %{_slibdir}/lib*.so
 %ifarch ia64
@@ -911,7 +891,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir}/gcc/*/*/collect2
 
 %{_libdir}/gcc/*/*/include/*.h
-%exclude %{_libdir}/gcc/*/*/include/g2c.h
+%{?with_fortran:%exclude %{_libdir}/gcc/*/*/include/g2c.h}
 
 %files libgcc
 %defattr(644,root,root,755)
@@ -920,63 +900,62 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_slibdir32}/lib*.so.*
 %endif
 
+%if %{with cxx}
 %files c++
 %defattr(644,root,root,755)
 %doc gcc/cp/{ChangeLog,NEWS}
-%attr(755,root,root) %{_bindir}/g++
-%attr(755,root,root) %{_bindir}/*-g++
-%attr(755,root,root) %{_bindir}/c++
-%attr(755,root,root) %{_bindir}/*-c++
+%attr(755,root,root) %{_bindir}/g++-*
+%attr(755,root,root) %{_bindir}/*-g++-*
+%attr(755,root,root) %{_bindir}/c++-*
+%attr(755,root,root) %{_bindir}/*-c++-*
 %attr(755,root,root) %{_libdir}/gcc/*/*/cc1plus
-%{_libdir}/libsupc++.la
-%{_libdir}/libsupc++.a
+%{_libdir}/gcc/*/*/libsupc++.la
+%{_libdir}/gcc/*/*/libsupc++.a
 %ifarch ppc
-%{_libdir}/nof/libsupc++.la
-%{_libdir}/nof/libsupc++.a
+%{_libdir}/gcc/*/*/nof/libsupc++.la
+%{_libdir}/gcc/*/*/nof/libsupc++.a
 %endif
 %if %{with multilib}
-%{_libdir32}/libsupc++.la
-%{_libdir32}/libsupc++.a
+%{_libdir32}/gcc/*/*/libsupc++.la
+%{_libdir32}/gcc/*/*/libsupc++.a
 %endif
-%{_mandir}/man1/g++.1*
-%lang(ja) %{_mandir}/ja/man1/g++.1*
+%{_mandir}/man1/g++-*.1*
 
-%files libstdc++ -f libstdc++.lang
+%files libstdc++
 %defattr(644,root,root,755)
 %doc libstdc++-v3/{ChangeLog,README}
-%attr(755,root,root) %{_libdir}/libstdc++.so.*.*.*
+%attr(755,root,root) %{_libdir}/gcc/*/*/libstdc++.so.*.*.*
 %ifarch ppc
-%attr(755,root,root) %{_libdir}/nof/libstdc++.so.*.*.*
+%attr(755,root,root) %{_libdir}/nof/gcc/*/*/libstdc++.so.*.*.*
 %endif
 %if %{with multilib}
-%attr(755,root,root) %{_libdir32}/libstdc++.so.*.*.*
+%attr(755,root,root) %{_libdir32}/gcc/*/*/libstdc++.so.*.*.*
 %endif
 
 %files libstdc++-devel
 %defattr(644,root,root,755)
 %doc libstdc++-v3/docs/html
-%dir %{_includedir}/c++
-%{_includedir}/c++/%{version}
-%exclude %{_includedir}/c++/%{version}/*/bits/stdc++.h.gch
-%attr(755,root,root) %{_libdir}/libstdc++.so
-%{_libdir}/libstdc++.la
+%{_libdir}/gcc/*/*/include/c++
+%attr(755,root,root) %{_libdir}/gcc/*/*/libstdc++.so
+%{_libdir}/gcc/*/*/libstdc++.la
 %ifarch ppc
-%attr(755,root,root) %{_libdir}/nof/libstdc++.so
-%{_libdir}/nof/libstdc++.la
+%attr(755,root,root) %{_libdir}/gcc/*/*/nof/libstdc++.so
+%{_libdir}/gcc/*/*/nof/libstdc++.la
 %endif
 %if %{with multilib}
-%attr(755,root,root) %{_libdir32}/libstdc++.so
-%{_libdir32}/libstdc++.la
+%attr(755,root,root) %{_libdir32}/gcc/*/*/libstdc++.so
+%{_libdir32}/gcc/*/*/libstdc++.la
 %endif
 
 %files libstdc++-static
 %defattr(644,root,root,755)
-%{_libdir}/libstdc++.a
+%{_libdir}/gcc/*/*/libstdc++.a
 %ifarch ppc
-%{_libdir}/nof/libstdc++.a
+%{_libdir}/gcc/*/*/nof/libstdc++.a
 %endif
 %if %{with multilib}
-%{_libdir32}/libstdc++.a
+%{_libdir32}/gcc/*/*/libstdc++.a
+%endif
 %endif
 
 %if %{with objc}
@@ -1018,10 +997,11 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %endif
 
+%if %{with fortran}
 %files g77
 %defattr(644,root,root,755)
 %doc gcc/f/{BUGS,ChangeLog,NEWS}
-%attr(755,root,root) %{_bindir}/g77
+%attr(755,root,root) %{_bindir}/g77-*
 %attr(755,root,root) %{_bindir}/f77
 #%{_infodir}/g77*
 %attr(755,root,root) %{_libdir}/gcc/*/*/f771
@@ -1041,8 +1021,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/gcc/*/*/include/g2c.h
 %{_mandir}/man1/g77.1*
 %{_mandir}/man1/f77.1*
-%lang(ja) %{_mandir}/ja/man1/g77.1*
-%lang(ja) %{_mandir}/ja/man1/f77.1*
 
 %files libg2c
 %defattr(644,root,root,755)
@@ -1063,6 +1041,7 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %if %{with multilib}
 %{_libdir32}/libg2c.a
+%endif
 %endif
 
 %if %{with java}
