@@ -22,7 +22,7 @@ Summary(pl):	Kolekcja kompilatorów GNU: kompilator C i pliki wspó³dzielone
 Summary(pt_BR):	Coleção dos compiladores GNU: o compilador C e arquivos compartilhados
 Name:		compat-gcc-34
 Version:	3.4.3
-Release:	0.1
+Release:	0.2
 License:	GPL
 Group:		Development/Languages
 Source0:	ftp://gcc.gnu.org/pub/gcc/releases/gcc-%{version}/gcc-%{version}.tar.bz2
@@ -65,6 +65,8 @@ Patch8:		%{name}-pr18185.patch
 #
 Patch9:		%{name}-visibility.patch
 Patch10:	%{name}-pr13470.patch
+Patch11:	%{name}-cxxabi.patch
+Patch12:	%{name}-pr-rh.patch
 #
 Patch20:	%{name}-ada-bootstrap.patch
 URL:		http://gcc.gnu.org/
@@ -634,6 +636,8 @@ Adzie.
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
+%patch11 -p0
+%patch12 -p0
 
 %ifarch alpha ia64
 # needed for bootstrap using gcc 3.3.x on alpha
