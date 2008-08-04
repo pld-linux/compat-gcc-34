@@ -1,0 +1,3127 @@
+2006-02-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libstdc++/11953
+	* gthr-posix.h (_REENTRANT): Only define if __osf__ is defined.
+
+	* config/ia64/linux.h (CPP_SPEC): Define.
+	* config/s390/linux.h (CPP_SPEC): Define.
+ 
+--- gcc/gthr-posix.h	(revision 111211)
++++ gcc/gthr-posix.h	(revision 111212)
+@@ -36,7 +36,7 @@ Software Foundation, 51 Franklin Street,
+ #define __GTHREADS 1
+ 
+ /* Some implementations of <pthread.h> require this to be defined.  */
+-#ifndef _REENTRANT
++#if !defined(_REENTRANT) && defined(__osf__)
+ #define _REENTRANT 1
+ #endif
+ 
+--- gcc/config/s390/linux.h	(revision 111211)
++++ gcc/config/s390/linux.h	(revision 111212)
+@@ -89,6 +89,7 @@ Software Foundation, 51 Franklin Street,
+           %{m31:-dynamic-linker /lib/ld.so.1} \
+           %{m64:-dynamic-linker /lib64/ld64.so.1}}}}"
+ 
++#define CPP_SPEC "%{posix:-D_POSIX_SOURCE} %{pthread:-D_REENTRANT}"
+ 
+ #define TARGET_ASM_FILE_END file_end_indicate_exec_stack
+ 
+--- gcc/config/ia64/linux.h	(revision 111211)
++++ gcc/config/ia64/linux.h	(revision 111212)
+@@ -48,6 +48,7 @@ do {						\
+       %{!dynamic-linker:-dynamic-linker /lib/ld-linux-ia64.so.2}} \
+       %{static:-static}}"
+ 
++#define CPP_SPEC "%{posix:-D_POSIX_SOURCE} %{pthread:-D_REENTRANT}"
+ 
+ #define JMP_BUF_SIZE  76
+ 
+2004-05-27  Josef Zlomek  <zlomekj@suse.cz>
+
+	PR middle-end/14084
+	* emit-rtl.c (gen_rtx_REG_offset): Adjust the offset according
+	to size of decl.
+
+--- gcc/emit-rtl.c	25 May 2004 12:04:15 -0000	1.391
++++ gcc/emit-rtl.c	27 May 2004 04:28:12 -0000	1.392
+@@ -746,13 +746,96 @@ gen_reg_rtx (enum machine_mode mode)
+   return val;
+ }
+ 
+-/* Generate a register with same attributes as REG,
+-   but offsetted by OFFSET.  */
++/* Generate a register with same attributes as REG, but offsetted by OFFSET.
++   Do the big endian correction if needed.  */
+ 
+ rtx
+ gen_rtx_REG_offset (rtx reg, enum machine_mode mode, unsigned int regno, int offset)
+ {
+   rtx new = gen_rtx_REG (mode, regno);
++  tree decl;
++  HOST_WIDE_INT var_size;
++
++  /* PR middle-end/14084
++     The problem appears when a variable is stored in a larger register
++     and later it is used in the original mode or some mode in between
++     or some part of variable is accessed.
++
++     On little endian machines there is no problem because
++     the REG_OFFSET of the start of the variable is the same when
++     accessed in any mode (it is 0).
++
++     However, this is not true on big endian machines.
++     The offset of the start of the variable is different when accessed
++     in different modes.
++     When we are taking a part of the REG we have to change the OFFSET
++     from offset WRT size of mode of REG to offset WRT size of variable.
++
++     If we would not do the big endian correction the resulting REG_OFFSET
++     would be larger than the size of the DECL.
++
++     Examples of correction, for BYTES_BIG_ENDIAN WORDS_BIG_ENDIAN machine:
++
++     REG.mode  MODE  DECL size  old offset  new offset  description
++     DI        SI    4          4           0           int32 in SImode
++     DI        SI    1          4           0           char in SImode
++     DI        QI    1          7           0           char in QImode
++     DI        QI    4          5           1           1st element in QImode
++                                                        of char[4]
++     DI        HI    4          6           2           1st element in HImode
++                                                        of int16[2]
++
++     If the size of DECL is equal or greater than the size of REG
++     we can't do this correction because the register holds the
++     whole variable or a part of the variable and thus the REG_OFFSET
++     is already correct.  */
++
++  decl = REG_EXPR (reg);
++  if ((BYTES_BIG_ENDIAN || WORDS_BIG_ENDIAN)
++      && decl != NULL
++      && offset > 0
++      && GET_MODE_SIZE (GET_MODE (reg)) > GET_MODE_SIZE (mode)
++      && ((var_size = int_size_in_bytes (TREE_TYPE (decl))) > 0
++	  && var_size < GET_MODE_SIZE (GET_MODE (reg))))
++    {
++      int offset_le;
++
++      /* Convert machine endian to little endian WRT size of mode of REG.  */
++      if (WORDS_BIG_ENDIAN)
++	offset_le = ((GET_MODE_SIZE (GET_MODE (reg)) - 1 - offset)
++		     / UNITS_PER_WORD) * UNITS_PER_WORD;
++      else
++	offset_le = (offset / UNITS_PER_WORD) * UNITS_PER_WORD;
++
++      if (BYTES_BIG_ENDIAN)
++	offset_le += ((GET_MODE_SIZE (GET_MODE (reg)) - 1 - offset)
++		      % UNITS_PER_WORD);
++      else
++	offset_le += offset % UNITS_PER_WORD;
++
++      if (offset_le >= var_size)
++	{
++	  /* MODE is wider than the variable so the new reg will cover
++	     the whole variable so the resulting OFFSET should be 0.  */
++	  offset = 0;
++	}
++      else
++	{
++	  /* Convert little endian to machine endian WRT size of variable.  */
++	  if (WORDS_BIG_ENDIAN)
++	    offset = ((var_size - 1 - offset_le)
++		      / UNITS_PER_WORD) * UNITS_PER_WORD;
++	  else
++	    offset = (offset_le / UNITS_PER_WORD) * UNITS_PER_WORD;
++
++	  if (BYTES_BIG_ENDIAN)
++	    offset += ((var_size - 1 - offset_le)
++		       % UNITS_PER_WORD);
++	  else
++	    offset += offset_le % UNITS_PER_WORD;
++	}
++    }
++
+   REG_ATTRS (new) = get_reg_attrs (REG_EXPR (reg),
+ 				   REG_OFFSET (reg) + offset);
+   return new;
+2005-01-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/16104
+	* expr.c (convert_move): Handle vector from resp. to if mode
+	sizes differ.
+
+	* gcc.c-torture/execute/20050113-1.c: New test.
+
+--- gcc/expr.c.jj	2004-12-27 21:31:08.000000000 +0100
++++ gcc/expr.c	2005-01-13 15:56:31.229253647 +0100
+@@ -590,7 +590,26 @@ convert_move (rtx to, rtx from, int unsi
+   if (VECTOR_MODE_P (to_mode) || VECTOR_MODE_P (from_mode))
+     {
+       if (GET_MODE_BITSIZE (from_mode) != GET_MODE_BITSIZE (to_mode))
+-	abort ();
++        {
++          if (VECTOR_MODE_P (from_mode))
++            {
++              enum machine_mode new_mode;
++
++              new_mode = mode_for_size (GET_MODE_BITSIZE (from_mode),
++                                        MODE_INT, 0);
++              from = simplify_gen_subreg (new_mode, from, from_mode, 0);
++            }
++          if (VECTOR_MODE_P (to_mode))
++            {
++              enum machine_mode new_mode;
++
++              new_mode = mode_for_size (GET_MODE_BITSIZE (to_mode),
++                                        MODE_INT, 0);
++              to = simplify_gen_subreg (new_mode, to, to_mode, 0);
++            }
++          convert_move (to, from, unsignedp);
++          return;
++        }
+ 
+       if (VECTOR_MODE_P (to_mode))
+ 	from = simplify_gen_subreg (to_mode, from, GET_MODE (from), 0);
+--- gcc/testsuite/gcc.c-torture/execute/20050113-1.c.jj	2005-01-13 15:51:09.194383356 +0100
++++ gcc/testsuite/gcc.c-torture/execute/20050113-1.c	2005-01-13 15:37:22.000000000 +0100
+@@ -0,0 +1,56 @@
++/* PR rtl-optimization/16104 */
++
++extern void abort (void);
++
++typedef int V2SI __attribute__ ((vector_size (8)));
++typedef short V2HI __attribute__ ((vector_size (4)));
++
++int
++test1 (void)
++{
++  return (long long) (V2SI) 0LL;
++}
++
++int
++test2 (V2SI x)
++{
++  return (long long) x;
++}
++
++V2SI
++test3 (void)
++{
++  return (V2SI) (long long) (int) (V2HI) 0;
++}
++
++V2SI
++test4 (V2HI x)
++{
++  return (V2SI) (long long) (int) x;
++}
++
++int
++main (void)
++{
++  if (sizeof (short) != 2 || sizeof (int) != 4 || sizeof (long long) != 8)
++    return 0;
++
++  if (test1 () != 0)
++    abort ();
++
++  V2SI x = { 2, 2 };
++  if (test2 (x) != 2)
++    abort ();
++
++  union { V2SI x; int y[2]; } u;
++  u.x = test3 ();
++  if (u.y[0] != 0 || u.y[1] != 0)
++    abort ();
++
++  V2HI y = { 4, 4 };
++  union { V2SI x; long long y; } v;
++  v.x = test4 (y);
++  if (v.y != 0x40004)
++    abort ();
++  return 0;
++}
+2005-09-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/18300
+	* config/i386/i386.c (classify_argument): Only use different
+	iterators for nested loops if nested loops sharing the same
+	iterator would hang.
+
+2004-11-13  Zak Kipling  <zak@transversal.com>
+
+	PR target/18300
+	* config/i386/i386.c (classify_argument): Fix infinite loop when
+	passing object with 3 or more base classes by value.
+
+--- gcc/config/i386/i386.c.jj	2005-07-21 11:01:36.000000000 +0200
++++ gcc/config/i386/i386.c	2005-09-07 14:22:19.000000000 +0200
+@@ -2028,8 +2028,17 @@ classify_argument (enum machine_mode mod
+ 	    {
+ 	      tree bases = TYPE_BINFO_BASETYPES (type);
+ 	      int n_bases = TREE_VEC_LENGTH (bases);
+-	      int i;
+-
++	      int i, basenum;
++	      enum x86_64_reg_class saveclasses[MAX_CLASSES];
++	      bool seen[MAX_CLASSES];
++
++	      /* PR target/18300: The following code mistakenly uses the same
++		 iterator variable in both nested for loops.  But to preserve
++		 binary compatibility, do whatever this code used to do before
++		 unless old GCC would hang in an infinite loop.  In that case
++		 use whatever GCC 4.0+ does.  */
++	      memset (seen, 0, sizeof (seen));
++	      memcpy (saveclasses, classes, sizeof (saveclasses));
+ 	      for (i = 0; i < n_bases; ++i)
+ 		{
+ 		   tree binfo = TREE_VEC_ELT (bases, i);
+@@ -2037,6 +2046,12 @@ classify_argument (enum machine_mode mod
+ 		   int offset = tree_low_cst (BINFO_OFFSET (binfo), 0) * 8;
+ 		   tree type = BINFO_TYPE (binfo);
+ 
++		   if (i < MAX_CLASSES)
++		     {
++		       if (seen[i])
++			 break;
++		       seen[i] = true;
++		     }
+ 		   num = classify_argument (TYPE_MODE (type),
+ 					    type, subclasses,
+ 					    (offset + bit_offset) % 256);
+@@ -2049,6 +2064,32 @@ classify_argument (enum machine_mode mod
+ 			 merge_classes (subclasses[i], classes[i + pos]);
+ 		     }
+ 		}
++	      if (i < n_bases)
++		{
++		  /* Older GCC 3.[0-4].x would hang in the above loop, so
++		     don't worry about backwards compatibility and
++		     just DTRT.  */
++		  memcpy (classes, saveclasses, sizeof (saveclasses));
++		  for (basenum = 0; basenum < n_bases; ++basenum)
++		    {
++		      tree binfo = TREE_VEC_ELT (bases, basenum);
++		      int num;
++		      int offset = tree_low_cst (BINFO_OFFSET (binfo), 0) * 8;
++		      tree type = BINFO_TYPE (binfo);
++
++		      num = classify_argument (TYPE_MODE (type),
++					       type, subclasses,
++					       (offset + bit_offset) % 256);
++		      if (!num)
++			return 0;
++		      for (i = 0; i < num; i++)
++			{
++			  int pos = (offset + (bit_offset % 64)) / 8 / 8;
++			  classes[i + pos] =
++			    merge_classes (subclasses[i], classes[i + pos]);
++			}
++		    }
++		}
+ 	    }
+ 	  /* And now merge the fields of structure.  */
+ 	  for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
+@@ -2116,8 +2157,17 @@ classify_argument (enum machine_mode mod
+ 	    {
+ 	      tree bases = TYPE_BINFO_BASETYPES (type);
+ 	      int n_bases = TREE_VEC_LENGTH (bases);
+-	      int i;
+-
++	      int i, basenum;
++	      enum x86_64_reg_class saveclasses[MAX_CLASSES];
++	      bool seen[MAX_CLASSES];
++
++	      /* PR target/18300: The following code mistakenly uses the same
++		 iterator variable in both nested for loops.  But to preserve
++		 binary compatibility, do whatever this code used to do before
++		 unless old GCC would hang in an infinite loop.  In that case
++		 use whatever GCC 4.0+ does.  */
++	      memset (seen, 0, sizeof (seen));
++	      memcpy (saveclasses, classes, sizeof (saveclasses));
+ 	      for (i = 0; i < n_bases; ++i)
+ 		{
+ 		   tree binfo = TREE_VEC_ELT (bases, i);
+@@ -2125,6 +2175,12 @@ classify_argument (enum machine_mode mod
+ 		   int offset = tree_low_cst (BINFO_OFFSET (binfo), 0) * 8;
+ 		   tree type = BINFO_TYPE (binfo);
+ 
++		   if (i < MAX_CLASSES)
++		     {
++		       if (seen[i])
++			 break;
++		       seen[i] = true;
++		     }
+ 		   num = classify_argument (TYPE_MODE (type),
+ 					    type, subclasses,
+ 					    (offset + (bit_offset % 64)) % 256);
+@@ -2137,6 +2193,32 @@ classify_argument (enum machine_mode mod
+ 			 merge_classes (subclasses[i], classes[i + pos]);
+ 		     }
+ 		}
++	      if (i < n_bases)
++		{
++		  /* Older GCC 3.[0-4].x would hang in the above loop, so
++		     don't worry about backwards compatibility and
++		     just DTRT.  */
++		  memcpy (classes, saveclasses, sizeof (saveclasses));
++		  for (basenum = 0; basenum < n_bases; ++basenum)
++		    {
++		      tree binfo = TREE_VEC_ELT (bases, basenum);
++		      int num;
++		      int offset = tree_low_cst (BINFO_OFFSET (binfo), 0) * 8;
++		      tree type = BINFO_TYPE (binfo);
++
++		      num = classify_argument (TYPE_MODE (type),
++					       type, subclasses,
++					       (offset + (bit_offset % 64)) % 256);
++		      if (!num)
++			return 0;
++		      for (i = 0; i < num; i++)
++			{
++			  int pos = (offset + (bit_offset % 64)) / 8 / 8;
++			  classes[i + pos] =
++			    merge_classes (subclasses[i], classes[i + pos]);
++			}
++		    }
++		}
+ 	    }
+ 	  for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
+ 	    {
+--- gcc/testsuite/g++.dg/other/infloop-1.C 1 Jan 1970 00:00:00 -0000
++++ gcc/testsuite/g++.dg/other/infloop-1.C	13 Nov 2004 23:09:08 -0000	1.1
+@@ -0,0 +1,16 @@
++// PR 18300: This sends old compilers into an infinite loop on x86_64
++// Testcase and patch contributed by Zak Kipling <zak@transversal.com>
++
++struct base1 { };
++struct base2 { };
++struct base3 { };
++
++struct derived : base1, base2, base3 { };
++
++void foo(derived);
++
++int main()
++{
++  foo(derived());
++}
++
+2004-12-13  Mark Mitchell  <mark@codesourcery.com>
+
+	PR c++/18925
+	* class.c (layout_class_type): Determine the visibility of static
+	data members.
+
+	* g++.dg/ext/visibility/staticdatamem.C: New test.
+
+--- gcc/cp/class.c	8 Dec 2004 08:35:33 -0000	1.692
++++ gcc/cp/class.c	14 Dec 2004 02:21:46 -0000	1.693
+@@ -4553,7 +4553,13 @@ layout_class_type (tree t, tree *virtual
+              At this point, finish_record_layout will be called, but
+ 	     S1 is still incomplete.)  */
+ 	  if (TREE_CODE (field) == VAR_DECL)
+-	    maybe_register_incomplete_var (field);
++	    {
++	      maybe_register_incomplete_var (field);
++	      /* The visibility of static data members is determined
++		 at their point of declaration, not their point of
++		 definition.  */
++	      determine_visibility (field);
++	    }
+ 	  continue;
+ 	}
+ 
+--- gcc/testsuite/g++.dg/ext/visibility/staticdatamem.C	1 Jan 1970 00:00:00 -0000
++++ gcc/testsuite/g++.dg/ext/visibility/staticdatamem.C	14 Dec 2004 02:15:55 -0000	1.1
+@@ -0,0 +1,20 @@
++// PR c++/18925
++// { dg-do compile { target ia64-*-linux* } }
++// { dg-options "-fPIC -fvisibility=hidden" }
++// { dg-final { scan-assembler-not "gprel" } }
++
++class __attribute__ ((visibility("default"))) Type 
++{ 
++ private: 
++  static long _staticTypeCount; 
++ public: 
++  Type() { _staticTypeCount++; } 
++  ~Type(); 
++}; 
++ 
++long Type::_staticTypeCount = 0; 
++ 
++Type::~Type() 
++{ 
++ _staticTypeCount--; 
++} 
+2005-05-07  Richard Henderson  <rth@redhat.com>
+
+	PR target/21412
+	* config/rs6000/rs6000.c (rs6000_emit_move): Look for tls addresses
+	with constant offsets.
+
+2004-07-11  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* config/s390/s390.c (legitimize_tls_address): Handle constant offsets
+	added to TLS symbol addresses.
+
+2004-07-06  Richard Henderson  <rth@redhat.com>
+
+	* config/i386/i386.c (legitimize_address): Handle CONST with TLS
+	operand.
+	(ix86_expand_move): Don't call legitimize_pic_address directly.
+
+2006-05-05  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/tls/opt-12.c: New test.
+
+--- gcc/config/s390/s390.c	(revision 84404)
++++ gcc/config/s390/s390.c	(revision 84535)
+@@ -2913,6 +2913,18 @@ legitimize_tls_address (rtx addr, rtx re
+ 	}
+     }
+ 
++  else if (GET_CODE (addr) == CONST && GET_CODE (XEXP (addr, 0)) == PLUS
++	   && GET_CODE (XEXP (XEXP (addr, 0), 1)) == CONST_INT)
++    {
++      new = XEXP (XEXP (addr, 0), 0);
++      if (GET_CODE (new) != SYMBOL_REF)
++	new = gen_rtx_CONST (Pmode, new);
++
++      new = legitimize_tls_address (new, reg);
++      new = plus_constant (new, INTVAL (XEXP (XEXP (addr, 0), 1)));
++      new = force_operand (new, 0);
++    }
++
+   else
+     abort ();  /* for now ... */
+ 
+--- gcc/config/i386/i386.c	2005-11-21 14:56:49.000000000 +0100
++++ gcc/config/i386/i386.c	2006-05-05 11:21:54.000000000 +0200
+@@ -6604,6 +6604,13 @@ legitimize_address (rtx x, rtx oldx ATTR
+   log = tls_symbolic_operand (x, mode);
+   if (log)
+     return legitimize_tls_address (x, log, false);
++  if (GET_CODE (x) == CONST
++      && GET_CODE (XEXP (x, 0)) == PLUS
++      && (log = tls_symbolic_operand (XEXP (XEXP (x, 0), 0), Pmode)))
++    {
++      rtx t = legitimize_tls_address (XEXP (XEXP (x, 0), 0), log, false);
++      return gen_rtx_PLUS (Pmode, t, XEXP (XEXP (x, 0), 1));
++    }
+ 
+   if (flag_pic && SYMBOLIC_CONST (x))
+     return legitimize_pic_address (x, 0);
+@@ -8395,6 +8402,10 @@ ix86_expand_move (enum machine_mode mode
+ #else
+       if (GET_CODE (op0) == MEM)
+ 	op1 = force_reg (Pmode, op1);
++      else if (GET_CODE (op1) == CONST
++	       && GET_CODE (XEXP (op1, 0)) == PLUS
++	       && tls_symbolic_operand (XEXP (XEXP (op1, 0), 0), Pmode))
++	op1 = legitimize_address (op1, op1, Pmode);
+       else
+ 	{
+ 	  rtx temp = op0;
+--- gcc/config/rs6000/rs6000.c	(revision 99334)
++++ gcc/config/rs6000/rs6000.c	(revision 99367)
+@@ -4436,11 +4436,31 @@ rs6000_emit_move (rtx dest, rtx source, 
+ 
+   /* Recognize the case where operand[1] is a reference to thread-local
+      data and load its address to a register.  */
+-  if (GET_CODE (operands[1]) == SYMBOL_REF)
++  if (rs6000_tls_referenced_p (operands[1]))
+     {
+-      enum tls_model model = SYMBOL_REF_TLS_MODEL (operands[1]);
+-      if (model != 0)
+-	operands[1] = rs6000_legitimize_tls_address (operands[1], model);
++      enum tls_model model;
++      rtx tmp = operands[1];
++      rtx addend = NULL;
++
++      if (GET_CODE (tmp) == CONST && GET_CODE (XEXP (tmp, 0)) == PLUS)
++	{
++          addend = XEXP (XEXP (tmp, 0), 1);
++	  tmp = XEXP (XEXP (tmp, 0), 0);
++	}
++
++      if (GET_CODE (tmp) != SYMBOL_REF)
++	abort ();
++      model = SYMBOL_REF_TLS_MODEL (tmp);
++      if (model == 0)
++	abort ();
++
++      tmp = rs6000_legitimize_tls_address (tmp, model);
++      if (addend)
++	{
++	  tmp = gen_rtx_PLUS (mode, tmp, addend);
++	  tmp = force_operand (tmp, operands[0]);
++	}
++      operands[1] = tmp;
+     }
+ 
+   /* Handle the case where reload calls us with an invalid address.  */
+--- gcc/testsuite/gcc.dg/tls/opt-9.c	(revision 0)
++++ gcc/testsuite/gcc.dg/tls/opt-9.c	(revision 99367)
+@@ -0,0 +1,7 @@
++/* PR 21412 */
++/* { dg-do compile */
++/* { dg-options "-O2 -fPIC" } */
++
++struct S { int x[10]; };
++extern __thread struct S s;
++int *foo() { return &s.x[2]; }
+--- gcc/testsuite/gcc.dg/tls/opt-12.c	2006-04-19 19:21:31.748476000 +0200
++++ gcc/testsuite/gcc.dg/tls/opt-12.c	2006-05-05 11:01:33.000000000 +0200
+@@ -0,0 +1,16 @@
++/* { dg-do compile } */
++/* { dg-options "-O2" } */
++/* { XXdgXX-require-effective-target tls } */
++
++__thread struct
++{
++  int a;
++  char b[32];
++} thr;
++
++int
++main ()
++{
++  __builtin_strcpy (thr.b, "abcd");
++  return 0;
++}
+2005-07-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/sstream-inst.cc: Add .hidden directive for
+	streamsize basic_stringbuf<{char,wchar_t}>::showmanyc().
+	* src/sstream-inst-showmanyc.cc: New file.
+	* src/Makefile.am (libstdc++_nonshared.la): Add new library.
+	* src/Makefile.in: Rebuilt.
+	* testsuite/lib/libstdc++.exp: Append -lstdc++_nonshared for
+	testsuite executable linking.
+
+2005-06-08  Benjamin Kosnik  <bkoz@redhat.com>
+
+	PR libstdc++/21955
+	* include/std/std_sstream.h (basic_stringbuf::showmanyc): Add.
+	* testsuite/27_io/basic_streambuf/in_avail/char/1.cc: New, test
+	base class behavior.
+	* testsuite/27_io/basic_streambuf/in_avail/wchar_t/1.cc: Same.
+	* testsuite/27_io/basic_stringbuf/in_avail/char/21955.cc: New.
+	* testsuite/27_io/basic_stringbuf/in_avail/char/1.cc: Match
+	filebuf behavior.
+	* testsuite/27_io/basic_stringbuf/str/char/1.cc: Same.
+
+--- libstdc++-v3/src/sstream-inst.cc.jj	2003-07-11 10:28:13.000000000 +0200
++++ libstdc++-v3/src/sstream-inst.cc	2005-07-21 17:46:08.000000000 +0200
+@@ -60,3 +60,8 @@ namespace std
+   template class basic_stringstream<wchar_t>; 
+ #endif
+ } // namespace std
++
++#ifdef PIC
++__asm (".hidden _ZNSt15basic_stringbufIcSt11char_traitsIcESaIcEE9showmanycEv");
++__asm (".hidden _ZNSt15basic_stringbufIwSt11char_traitsIwESaIwEE9showmanycEv");
++#endif
+--- libstdc++-v3/src/sstream-inst-showmanyc.cc.jj	2005-07-21 21:27:40.000000000 +0200
++++ libstdc++-v3/src/sstream-inst-showmanyc.cc	2005-07-22 09:16:58.000000000 +0200
+@@ -0,0 +1,39 @@
++// Explicit instantiation file.
++
++// Copyright (C) 2005
++// Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 2, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// You should have received a copy of the GNU General Public License along
++// with this library; see the file COPYING.  If not, write to the Free
++// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
++// USA.
++
++// As a special exception, you may use this file as part of a free software
++// library without restriction.  Specifically, if other files instantiate
++// templates or use macros or inline functions from this file, or you compile
++// this file and link it with other files to produce an executable, this
++// file does not by itself cause the resulting executable to be covered by
++// the GNU General Public License.  This exception does not however
++// invalidate any other reasons why the executable file might be covered by
++// the GNU General Public License.
++
++#include <sstream>
++
++namespace std
++{
++  // These symbols are hidden in libstdc++.so, as it is undesirable to export
++  // @@GLIBCXX_3.4.6
++  template streamsize basic_stringbuf<char, char_traits<char>, allocator<char> >::showmanyc();
++  template streamsize basic_stringbuf<wchar_t, char_traits<wchar_t>, allocator<wchar_t> >::showmanyc();
++} // namespace std
+--- libstdc++-v3/src/Makefile.am.jj	2004-04-20 15:55:47.000000000 +0200
++++ libstdc++-v3/src/Makefile.am	2005-07-22 09:00:32.000000000 +0200
+@@ -25,7 +25,7 @@
+ include $(top_srcdir)/fragment.am
+ 
+ # Cross compiler support.
+-toolexeclib_LTLIBRARIES = libstdc++.la
++toolexeclib_LTLIBRARIES = libstdc++.la libstdc++_nonshared.la
+ 
+ # Symbol versioning for shared libraries.
+ if GLIBCXX_BUILD_VERSIONED_SHLIB
+@@ -150,6 +150,11 @@ libstdc___la_DEPENDENCIES = ${version_de
+ libstdc___la_LDFLAGS = \
+ 	-version-info $(libtool_VERSION) ${version_arg} -lm 
+ 
++libstdc___nonshared_la_SOURCES = \
++	sstream-inst-showmanyc.cc
++libstdc___nonshared_la_LIBADD =
++libstdc___nonshared_la_DEPENDENCIES = $(libstdc___nonshared_la_LIBADD)
++libstdc___nonshared_la_LDFLAGS = -static
+ 
+ # Use special rules for the deprecated source files so that they find
+ # deprecated include files.
+@@ -159,6 +164,14 @@ strstream.lo: strstream.cc
+ strstream.o: strstream.cc
+ 	$(CXXCOMPILE) -I$(GLIBCXX_INCLUDE_DIR)/backward -Wno-deprecated -c $<
+ 
++# Use special rules for libstdc++_nonshared.la files, as -prefer-pic
++# doesn't seem to work for some reason.
++sstream-inst-showmanyc.lo: sstream-inst-showmanyc.cc
++	$(LTCXXCOMPILE) -c $< \
++	  && cp -f .libs/sstream-inst-showmanyc.o sstream-inst-showmanyc.o
++sstream-inst-showmanyc.o: sstream-inst-showmanyc.cc
++	$(CXXCOMPILE) -fPIC -DPIC -c $<
++
+ # Use special rules for the concept-checking instantiations so that all
+ # the generated template functions are also instantiated.  Force the checks
+ # to be on so that the instantiations are actually seen.
+--- libstdc++-v3/src/Makefile.in.jj	2004-04-20 15:55:47.000000000 +0200
++++ libstdc++-v3/src/Makefile.in	2005-07-22 09:06:15.000000000 +0200
+@@ -221,7 +221,7 @@ WARN_CXXFLAGS = \
+ AM_CPPFLAGS = $(GLIBCXX_INCLUDES)
+ 
+ # Cross compiler support.
+-toolexeclib_LTLIBRARIES = libstdc++.la
++toolexeclib_LTLIBRARIES = libstdc++.la libstdc++_nonshared.la
+ 
+ # Symbol versioning for shared libraries.
+ @GLIBCXX_BUILD_VERSIONED_SHLIB_TRUE@version_arg = -Wl,--version-script=libstdc++-symbol.ver
+@@ -308,6 +308,13 @@ libstdc___la_LDFLAGS = \
+ 	-version-info $(libtool_VERSION) ${version_arg} -lm 
+ 
+ 
++libstdc___nonshared_la_SOURCES = \
++	sstream-inst-showmanyc.cc
++
++libstdc___nonshared_la_LIBADD = 
++libstdc___nonshared_la_DEPENDENCIES = $(libstdc___nonshared_la_LIBADD)
++libstdc___nonshared_la_LDFLAGS = -static
++
+ # Use special rules for the deprecated source files so that they find
+ # deprecated include files.
+ GLIBCXX_INCLUDE_DIR = $(glibcxx_builddir)/include
+@@ -379,6 +386,8 @@ am__objects_3 = allocator.lo codecvt.lo 
+ 	$(am__objects_1) $(am__objects_2)
+ am_libstdc___la_OBJECTS = $(am__objects_3)
+ libstdc___la_OBJECTS = $(am_libstdc___la_OBJECTS)
++am_libstdc___nonshared_la_OBJECTS = sstream-inst-showmanyc.lo
++libstdc___nonshared_la_OBJECTS = $(am_libstdc___nonshared_la_OBJECTS)
+ 
+ DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
+ depcomp =
+@@ -386,10 +395,10 @@ am__depfiles_maybe =
+ CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
+ 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
+ CXXLD = $(CXX)
+-DIST_SOURCES = $(libstdc___la_SOURCES)
++DIST_SOURCES = $(libstdc___la_SOURCES) $(libstdc___nonshared_la_SOURCES)
+ DIST_COMMON = $(srcdir)/Makefile.in $(top_srcdir)/fragment.am \
+ 	Makefile.am
+-SOURCES = $(libstdc___la_SOURCES)
++SOURCES = $(libstdc___la_SOURCES) $(libstdc___nonshared_la_SOURCES)
+ 
+ all: all-am
+ 
+@@ -430,6 +439,8 @@ clean-toolexeclibLTLIBRARIES:
+ 	done
+ libstdc++.la: $(libstdc___la_OBJECTS) $(libstdc___la_DEPENDENCIES) 
+ 	$(CXXLINK) -rpath $(toolexeclibdir) $(libstdc___la_LDFLAGS) $(libstdc___la_OBJECTS) $(libstdc___la_LIBADD) $(LIBS)
++libstdc++_nonshared.la: $(libstdc___nonshared_la_OBJECTS) $(libstdc___nonshared_la_DEPENDENCIES) 
++	$(CXXLINK) -rpath $(toolexeclibdir) $(libstdc___nonshared_la_LDFLAGS) $(libstdc___nonshared_la_OBJECTS) $(libstdc___nonshared_la_LIBADD) $(LIBS)
+ 
+ mostlyclean-compile:
+ 	-rm -f *.$(OBJEXT) core *.core
+@@ -674,6 +685,14 @@ strstream.lo: strstream.cc
+ strstream.o: strstream.cc
+ 	$(CXXCOMPILE) -I$(GLIBCXX_INCLUDE_DIR)/backward -Wno-deprecated -c $<
+ 
++# Use special rules for libstdc++_nonshared.la files, as -prefer-pic
++# doesn't seem to work for some reason.
++sstream-inst-showmanyc.lo: sstream-inst-showmanyc.cc
++	$(LTCXXCOMPILE) -c $< \
++	  && cp -f .libs/sstream-inst-showmanyc.o sstream-inst-showmanyc.o
++sstream-inst-showmanyc.o: sstream-inst-showmanyc.cc
++	$(CXXCOMPILE) -fPIC -DPIC -c $<
++
+ # Use special rules for the concept-checking instantiations so that all
+ # the generated template functions are also instantiated.  Force the checks
+ # to be on so that the instantiations are actually seen.
+--- libstdc++-v3/include/std/std_sstream.h.jj	2004-10-04 14:58:25.000000000 +0200
++++ libstdc++-v3/include/std/std_sstream.h	2005-07-21 17:17:16.000000000 +0200
+@@ -185,6 +185,18 @@ namespace std
+ 	_M_sync(const_cast<char_type*>(_M_string.data()), 0, __len);
+       }
+ 
++      virtual streamsize
++      showmanyc()
++      {
++	streamsize __ret = -1;
++	if (_M_mode & ios_base::in)
++	  {
++	    _M_update_egptr();
++	    __ret = this->egptr() - this->gptr();
++	  }
++	return __ret;
++      }
++
+       // [documentation is inherited]
+       virtual int_type
+       underflow();
+--- libstdc++-v3/testsuite/27_io/basic_stringbuf/str/char/1.cc.jj	2003-10-01 12:12:11.000000000 +0200
++++ libstdc++-v3/testsuite/27_io/basic_stringbuf/str/char/1.cc	2005-07-22 01:22:15.000000000 +0200
+@@ -45,7 +45,7 @@ void test03() 
+   std::streamsize d1 = strb_01.in_avail();
+   std::streamsize d2 = strb_03.in_avail();
+   VERIFY( d1 ); // non-zero
+-  VERIFY( !d2 ); // zero, cuz ios_base::out
++  VERIFY( d2 == -1 ); // -1, cuz ios_base::out
+   VERIFY( d1 != d2 ); //these should be the same
+   VERIFY( static_cast<std::streamsize>(str_01.length()) == d1 );  
+   VERIFY( strb_01.str() == strb_03.str() ); //ditto
+--- libstdc++-v3/testsuite/27_io/basic_stringbuf/in_avail/char/1.cc.jj	2003-10-01 12:12:10.000000000 +0200
++++ libstdc++-v3/testsuite/27_io/basic_stringbuf/in_avail/char/1.cc	2005-07-22 01:22:04.000000000 +0200
+@@ -49,8 +49,8 @@ void test04() 
+   VERIFY( strmof_1 == static_cast<std::streamoff>(str_01.length()) );
+   VERIFY( strmof_2 == static_cast<std::streamoff>(str_02.length()) );
+   strmof_1 = strb_03.in_avail(); 
+-  // zero cuz write-only, or eof()? zero, from showmany
+-  VERIFY( strmof_1 == 0 ); 
++  // zero cuz write-only, or eof() to match basic_filebuf
++  VERIFY( strmof_1 == -1 ); 
+ }
+ 
+ int main()
+--- libstdc++-v3/testsuite/27_io/basic_stringbuf/in_avail/char/21955.cc.jj	2005-07-22 01:22:04.000000000 +0200
++++ libstdc++-v3/testsuite/27_io/basic_stringbuf/in_avail/char/21955.cc	2005-07-22 01:22:04.000000000 +0200
+@@ -0,0 +1,54 @@
++// 2005-06-07 Benjamin Kosnik
++
++// Copyright (C) 2005
++// Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 2, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// You should have received a copy of the GNU General Public License along
++// with this library; see the file COPYING.  If not, write to the Free
++// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
++// USA.
++
++#include <sstream>
++#include <testsuite_hooks.h>
++#include <stdexcept>
++
++double  
++test_stringstream()
++{
++  double result;
++  char* source = "1918"; 
++  std::stringstream s;
++  s << source;
++
++  std::string tmp = s.str();
++  std::streambuf* sb = s.rdbuf();
++  int i = sb->in_avail();
++
++  if (i)
++    {
++      s >> result;
++    }
++  else
++    {
++      throw std::runtime_error("conversion failed");
++    }
++  return result;
++}
++
++
++int main ()
++{
++  test_stringstream();
++  return 0;
++}
+--- libstdc++-v3/testsuite/27_io/basic_streambuf/in_avail/char/1.cc.jj	2005-07-22 01:21:41.000000000 +0200
++++ libstdc++-v3/testsuite/27_io/basic_streambuf/in_avail/char/1.cc	2005-07-22 01:21:41.000000000 +0200
+@@ -0,0 +1,54 @@
++// 2005-06-07 Benjamin Kosnik  <bkoz@redhat.com>
++
++// Copyright (C) 2005 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 2, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// You should have received a copy of the GNU General Public License along
++// with this library; see the file COPYING.  If not, write to the Free
++// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
++// USA.
++
++// 27.8.1.4 Overridden virtual functions
++
++#include <fstream>
++#include <testsuite_hooks.h>
++
++typedef std::basic_streambuf<char> 	streambuf_type;
++
++struct testbuf : streambuf_type
++{
++  testbuf() { }
++};
++
++void test05() 
++{
++  typedef streambuf_type::int_type 	int_type;
++  typedef streambuf_type::traits_type 	traits_type;
++  typedef streambuf_type::pos_type 	pos_type;
++  typedef streambuf_type::off_type 	off_type;
++  typedef size_t 			size_type;
++
++  bool test __attribute__((unused)) = true;
++  std::streamoff  			strmof_1, strmof_2;
++  testbuf	sb01;
++
++  // int in_avail()
++  strmof_1 = sb01.in_avail();
++  VERIFY( strmof_1  == 0 ); 
++}
++
++int main() 
++{
++  test05();
++  return 0;
++}
+--- libstdc++-v3/testsuite/27_io/basic_streambuf/in_avail/wchar_t/1.cc.jj	2005-07-22 01:21:41.000000000 +0200
++++ libstdc++-v3/testsuite/27_io/basic_streambuf/in_avail/wchar_t/1.cc	2005-07-22 01:21:41.000000000 +0200
+@@ -0,0 +1,54 @@
++// 2005-06-07 Benjamin Kosnik  <bkoz@redhat.com>
++
++// Copyright (C) 2005 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 2, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// You should have received a copy of the GNU General Public License along
++// with this library; see the file COPYING.  If not, write to the Free
++// Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307,
++// USA.
++
++// 27.8.1.4 Overridden virtual functions
++
++#include <fstream>
++#include <testsuite_hooks.h>
++
++typedef std::basic_streambuf<wchar_t> 	streambuf_type;
++
++struct testbuf : streambuf_type
++{
++  testbuf() { }
++};
++
++void test05() 
++{
++  typedef streambuf_type::int_type 	int_type;
++  typedef streambuf_type::traits_type 	traits_type;
++  typedef streambuf_type::pos_type 	pos_type;
++  typedef streambuf_type::off_type 	off_type;
++  typedef size_t 			size_type;
++
++  bool test __attribute__((unused)) = true;
++  std::streamoff  			strmof_1, strmof_2;
++  testbuf	sb01;
++
++  // int in_avail()
++  strmof_1 = sb01.in_avail();
++  VERIFY( strmof_1  == 0 ); 
++}
++
++int main() 
++{
++  test05();
++  return 0;
++}
+--- libstdc++-v3/libsupc++/eh_globals.cc.jj	2005-11-21 14:43:32.000000000 +0100
++++ libstdc++-v3/libsupc++/eh_globals.cc	2006-04-21 15:38:55.000000000 +0200
+@@ -36,6 +36,26 @@
+ 
+ using namespace __cxxabiv1;
+ 
++#if 1
++namespace __gnu_internal
++{
++  __cxxabiv1::__cxa_eh_globals*
++  get_global() throw()
++  {
++    static __thread __cxxabiv1::__cxa_eh_globals global __attribute__((tls_model ("initial-exec")));
++    return &global;
++  }
++}
++
++extern "C" __cxa_eh_globals*
++__cxxabiv1::__cxa_get_globals_fast() throw()
++{ return __gnu_internal::get_global(); }
++
++extern "C" __cxa_eh_globals*
++__cxxabiv1::__cxa_get_globals() throw()
++{ return __gnu_internal::get_global(); }
++
++#else
+ 
+ // Single-threaded fallback buffer.
+ static __cxa_eh_globals globals_static;
+@@ -125,3 +145,4 @@ __cxa_get_globals () throw()
+   return &globals_static;
+ #endif
+ }
++#endif
+2005-11-23  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/24975 (basic_string)
+	* include/bits/basic_string.h (_Rep::_S_empty_rep): Avoid
+	strict-aliasing warnings.
+
+2005-11-22  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/24975
+	* include/bits/stl_set.h (insert(iterator, const value_type&),
+	erase(iterator), erase(iterator, iterator)): Don't break aliasing
+	rules casting to _Rep_iterator&, forward to _Rb_tree facilities.
+	* include/bits/stl_multiset.h (insert(iterator, const value_type&),
+	erase(iterator), erase(iterator, iterator)): Likewise.
+	* include/bits/stl_tree.h (_Rb_tree<>::_M_insert(_Const_Base_ptr,
+	_Const_Base_ptr, const value_type&), insert_unique(const_iterator,
+	const value_type&), insert_equal(const_iterator, const value_type&),
+	erase(const_iterator), erase(const_iterator, const_iterator)): New,
+	_Rb_tree<>::const_iterator counterparts of existing facilities.
+
+--- libstdc++-v3/include/bits/basic_string.h.jj	2007-02-23 21:29:15.000000000 +0100
++++ libstdc++-v3/include/bits/basic_string.h	2007-07-19 12:11:40.000000000 +0200
+@@ -175,7 +175,16 @@ namespace std
+ 
+         static _Rep&
+         _S_empty_rep()
+-        { return *reinterpret_cast<_Rep*>(&_S_empty_rep_storage); }
++        {
++#if __GNUC__ >= 4
++	  // Work around type-punning warning in g++4.  _S_empty_rep_storage
++	  // is never modified, so type-punning is ok.
++	  void* __p = reinterpret_cast<void*>(&_S_empty_rep_storage);
++	  return *reinterpret_cast<_Rep*>(__p);
++#else
++	  return *reinterpret_cast<_Rep*>(&_S_empty_rep_storage);
++#endif
++        }
+ 
+         bool
+ 	_M_is_leaked() const
+--- libstdc++-v3/include/bits/stl_tree.h.jj	2007-02-23 21:29:15.000000000 +0100
++++ libstdc++-v3/include/bits/stl_tree.h	2007-07-19 13:18:28.000000000 +0200
+@@ -532,6 +532,12 @@ namespace std
+       iterator
+       _M_insert(_Base_ptr __x, _Base_ptr __y, const value_type& __v);
+ 
++#if __GNUC__ >= 4
++      const_iterator
++      _M_insert(_Const_Base_ptr __x, _Const_Base_ptr __y,
++		const value_type& __v);
++#endif
++
+       _Link_type
+       _M_copy(_Const_Link_type __x, _Link_type __p);
+ 
+@@ -631,9 +637,19 @@ namespace std
+       iterator
+       insert_unique(iterator __position, const value_type& __x);
+ 
++#if __GNUC__ >= 4
++      const_iterator
++      insert_unique(const_iterator __position, const value_type& __x);
++#endif
++
+       iterator
+       insert_equal(iterator __position, const value_type& __x);
+ 
++#if __GNUC__ >= 4
++      const_iterator
++      insert_equal(const_iterator __position, const value_type& __x);
++#endif
++
+       template<typename _InputIterator>
+       void
+       insert_unique(_InputIterator __first, _InputIterator __last);
+@@ -645,12 +661,22 @@ namespace std
+       void
+       erase(iterator __position);
+ 
++#if __GNUC__ >= 4
++      void
++      erase(const_iterator __position);
++#endif
++
+       size_type
+       erase(const key_type& __x);
+ 
+       void
+       erase(iterator __first, iterator __last);
+ 
++#if __GNUC__ >= 4
++      void
++      erase(const_iterator __first, const_iterator __last);
++#endif
++
+       void
+       erase(const key_type* __first, const key_type* __last);
+ 
+@@ -793,6 +819,28 @@ namespace std
+       return iterator(__z);
+     }
+ 
++#if __GNUC__ >= 4
++  template<typename _Key, typename _Val, typename _KeyOfValue,
++           typename _Compare, typename _Alloc>
++    typename _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::const_iterator
++    _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::
++    _M_insert(_Const_Base_ptr __x, _Const_Base_ptr __p, const _Val& __v)
++    {
++      _Link_type __z = _M_create_node(__v);
++      bool __insert_left;
++
++      __insert_left = __x != 0 || __p == _M_end()
++	              || _M_impl._M_key_compare(_KeyOfValue()(__v), 
++						_S_key(__p));
++
++      _Rb_tree_insert_and_rebalance(__insert_left, __z,
++				    const_cast<_Base_ptr>(__p),  
++				    this->_M_impl._M_header);
++      ++_M_impl._M_node_count;
++      return const_iterator(__z);
++    }
++#endif
++
+   template<typename _Key, typename _Val, typename _KeyOfValue,
+            typename _Compare, typename _Alloc>
+     typename _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::iterator
+@@ -928,6 +976,54 @@ namespace std
+ 	}
+     }
+ 
++#if __GNUC__ >= 4
++  template<typename _Key, typename _Val, typename _KeyOfValue,
++           typename _Compare, typename _Alloc>
++    typename _Rb_tree<_Key, _Val, _KeyOfValue, _Compare, _Alloc>::const_iterator
++    _Rb_tree<_Key, _Val, _KeyOfValue, _Compare, _Alloc>::
++    insert_unique(const_iterator __position, const _Val& __v)
++    {
++      if (__position._M_node == _M_leftmost())
++	{
++	  // begin()
++	  if (size() > 0
++	      && _M_impl._M_key_compare(_KeyOfValue()(__v), 
++					_S_key(__position._M_node)))
++	    return _M_insert(__position._M_node, __position._M_node, __v);
++	  // First argument just needs to be non-null.
++	  else
++	    return const_iterator(insert_unique(__v).first);
++	}
++      else if (__position._M_node == _M_end())
++	{
++	  // end()
++	  if (_M_impl._M_key_compare(_S_key(_M_rightmost()), 
++				     _KeyOfValue()(__v)))
++	    return _M_insert(0, _M_rightmost(), __v);
++	  else
++	    return const_iterator(insert_unique(__v).first);
++	}
++      else
++	{
++	  const_iterator __before = __position;
++	  --__before;
++	  if (_M_impl._M_key_compare(_S_key(__before._M_node), 
++				     _KeyOfValue()(__v))
++	      && _M_impl._M_key_compare(_KeyOfValue()(__v),
++					_S_key(__position._M_node)))
++	    {
++	      if (_S_right(__before._M_node) == 0)
++		return _M_insert(0, __before._M_node, __v);
++	      else
++		return _M_insert(__position._M_node, __position._M_node, __v);
++	      // First argument just needs to be non-null.
++	    }
++	  else
++	    return const_iterator(insert_unique(__v).first);
++	}
++    }
++#endif
++
+   template<typename _Key, typename _Val, typename _KeyOfValue,
+            typename _Compare, typename _Alloc>
+     typename _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::iterator
+@@ -974,6 +1070,54 @@ namespace std
+ 	}
+     }
+ 
++#if __GNUC__ >= 4
++  template<typename _Key, typename _Val, typename _KeyOfValue,
++           typename _Compare, typename _Alloc>
++    typename _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::const_iterator
++    _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::
++    insert_equal(const_iterator __position, const _Val& __v)
++    {
++      if (__position._M_node == _M_leftmost())
++	{
++	  // begin()
++	  if (size() > 0
++	      && !_M_impl._M_key_compare(_S_key(__position._M_node),
++					 _KeyOfValue()(__v)))
++	    return _M_insert(__position._M_node, __position._M_node, __v);
++	  // first argument just needs to be non-null
++	  else
++	    return const_iterator(insert_equal(__v));
++	}
++      else if (__position._M_node == _M_end())
++	{
++	  // end()
++	  if (!_M_impl._M_key_compare(_KeyOfValue()(__v), 
++				      _S_key(_M_rightmost())))
++	    return _M_insert(0, _M_rightmost(), __v);
++	  else
++	    return const_iterator(insert_equal(__v));
++	}
++      else
++	{
++	  const_iterator __before = __position;
++	  --__before;
++	  if (!_M_impl._M_key_compare(_KeyOfValue()(__v), 
++				      _S_key(__before._M_node))
++	      && !_M_impl._M_key_compare(_S_key(__position._M_node),
++					 _KeyOfValue()(__v)))
++	    {
++	      if (_S_right(__before._M_node) == 0)
++		return _M_insert(0, __before._M_node, __v);
++	      else
++		return _M_insert(__position._M_node, __position._M_node, __v);
++	      // First argument just needs to be non-null.
++	    }
++	  else
++	    return const_iterator(insert_equal(__v));
++	}
++    }
++#endif
++
+   template<typename _Key, typename _Val, typename _KoV,
+            typename _Cmp, typename _Alloc>
+     template<class _II>
+@@ -1008,6 +1152,20 @@ namespace std
+       --_M_impl._M_node_count;
+     }
+ 
++#if __GNUC__ >= 4
++  template<typename _Key, typename _Val, typename _KeyOfValue,
++           typename _Compare, typename _Alloc>
++    inline void
++    _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::erase(const_iterator __position)
++    {
++      _Link_type __y =
++	static_cast<_Link_type>(_Rb_tree_rebalance_for_erase(const_cast<_Base_ptr>(__position._M_node),
++							     this->_M_impl._M_header));
++      destroy_node(__y);
++      --_M_impl._M_node_count;
++    }
++#endif
++
+   template<typename _Key, typename _Val, typename _KeyOfValue,
+            typename _Compare, typename _Alloc>
+     typename _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::size_type
+@@ -1082,6 +1240,20 @@ namespace std
+ 	while (__first != __last) erase(__first++);
+     }
+ 
++#if __GNUC__ >= 4
++  template<typename _Key, typename _Val, typename _KeyOfValue,
++           typename _Compare, typename _Alloc>
++    void
++    _Rb_tree<_Key,_Val,_KeyOfValue,_Compare,_Alloc>::
++    erase(const_iterator __first, const_iterator __last)
++    {
++      if (__first == begin() && __last == end())
++	clear();
++      else
++	while (__first != __last) erase(__first++);
++    }
++#endif
++
+   template<typename _Key, typename _Val, typename _KeyOfValue,
+            typename _Compare, typename _Alloc>
+     void
+--- libstdc++-v3/include/bits/stl_multiset.h.jj	2007-02-23 21:29:15.000000000 +0100
++++ libstdc++-v3/include/bits/stl_multiset.h	2007-07-19 12:30:47.000000000 +0200
+@@ -328,8 +328,12 @@ namespace _GLIBCXX_STD
+       iterator
+       insert(iterator __position, const value_type& __x)
+       {
++#if __GNUC__ >= 4
++	return _M_t.insert_equal(__position, __x);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	return _M_t.insert_equal((_Rep_iterator&)__position, __x);
++#endif
+       }
+ 
+       /**
+@@ -358,8 +362,12 @@ namespace _GLIBCXX_STD
+       void
+       erase(iterator __position)
+       {
++#if __GNUC__ >= 4
++	_M_t.erase(__position);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	_M_t.erase((_Rep_iterator&)__position);
++#endif
+       }
+ 
+       /**
+@@ -391,8 +399,12 @@ namespace _GLIBCXX_STD
+       void
+       erase(iterator __first, iterator __last)
+       {
++#if __GNUC__ >= 4
++	_M_t.erase(__first, __last);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	_M_t.erase((_Rep_iterator&)__first, (_Rep_iterator&)__last);
++#endif
+       }
+ 
+       /**
+--- libstdc++-v3/include/bits/stl_set.h.jj	2007-02-23 21:29:15.000000000 +0100
++++ libstdc++-v3/include/bits/stl_set.h	2007-07-19 12:23:57.000000000 +0200
+@@ -337,8 +337,12 @@ namespace _GLIBCXX_STD
+       iterator
+       insert(iterator __position, const value_type& __x)
+       {
++#if __GNUC__ >= 4
++	return _M_t.insert_unique(__position, __x);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	return _M_t.insert_unique((_Rep_iterator&)__position, __x);
++#endif
+       }
+ 
+       /**
+@@ -366,8 +370,12 @@ namespace _GLIBCXX_STD
+       void
+       erase(iterator __position)
+       {
++#if __GNUC__ >= 4
++	_M_t.erase(__position);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	_M_t.erase((_Rep_iterator&)__position);
++#endif
+       }
+ 
+       /**
+@@ -398,8 +406,12 @@ namespace _GLIBCXX_STD
+       void
+       erase(iterator __first, iterator __last)
+       {
++#if __GNUC__ >= 4
++	_M_t.erase(__first, __last);
++#else
+ 	typedef typename _Rep_type::iterator _Rep_iterator;
+ 	_M_t.erase((_Rep_iterator&)__first, (_Rep_iterator&)__last);
++#endif
+       }
+ 
+       /**
+2006-02-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/26208
+	* unwind-dw2.c (struct _Unwind_Context): Add signal_frame field.
+	(_Unwind_FrameState): Add signal_frame field.
+	(extract_cie_info): Handle S flag in augmentation string.
+	(execute_cfa_program): If context->signal_frame, execute also
+	fs->pc == context->ra instructions.
+	(uw_frame_state_for): If context->signal_frame, don't subtract one
+	from context->ra to find FDE.
+	(uw_update_context_1): Set context->signal_frame to
+	fs->signal_frame.
+	(_Unwind_GetIPInfo): New function.
+	* unwind-c.c (PERSONALITY_FUNCTION): Use _Unwind_GetIPInfo instead
+	of _Unwind_GetIP.
+	* unwind-sjlj.c (_Unwind_GetIPInfo): New function.
+	* unwind.h (_Unwind_GetIPInfo): New prototype.
+	* unwind-compat.c (_Unwind_GetIPInfo): New function.
+	* libgcc-std.ver (_Unwind_GetIPInfo): Export @@GCC_4.2.0.
+	* config/ia64/unwind-ia64.c (_Unwind_GetIPInfo): New function.
+	* config/i386/linux.h (MD_FALLBACK_FRAME_STATE_FOR): Set
+	(FS)->signal_frame.
+	* config/i386/linux64.h (MD_FALLBACK_FRAME_STATE_FOR): Likewise.
+	* config/rs6000/linux-unwind.h (MD_FALLBACK_FRAME_STATE_FOR): Likewise.
+	* config/s390/linux.h (MD_FALLBACK_FRAME_STATE_FOR): Likewise.
+
+	* libsupc++/eh_personality.cc (PERSONALITY_FUNCTION): Use
+	_Unwind_GetIPInfo instead of _Unwind_GetIP.
+
+	* exception.cc (PERSONALITY_FUNCTION): Use _Unwind_GetIPInfo instead
+	of _Unwind_GetIP.
+	* include/i386-signal.h (MAKE_THROW_FRAME): Change into empty macro.
+	(HANDLE_DIVIDE_OVERFLOW): Don't adjust _res->eip if falling through
+	to throw.
+	* include/x86_64-signal.h (MAKE_THROW_FRAME): Change into empty
+	macro.
+	* include/powerpc-signal.h (MAKE_THROW_FRAME): Change into empty
+	macro.
+
+--- libjava/exception.cc.jj	2005-11-21 14:47:25.000000000 +0100
++++ libjava/exception.cc	2006-04-21 14:00:19.000000000 +0200
+@@ -199,6 +199,7 @@ PERSONALITY_FUNCTION (int version,
+   int handler_switch_value;
+   bool saw_cleanup;
+   bool saw_handler;
++  int ip_before_insn = 0;
+ 
+ 
+   // Interface version check.
+@@ -214,10 +215,10 @@ PERSONALITY_FUNCTION (int version,
+       goto install_context;
+     }
+ 
+-  // FIXME: In Phase 1, record _Unwind_GetIP in xh->obj as a part of
++  // FIXME: In Phase 1, record _Unwind_GetIPInfo in xh->obj as a part of
+   // the stack trace for this exception.  This will only collect Java
+   // frames, but perhaps that is acceptable.
+-  // FIXME2: _Unwind_GetIP is nonsensical for SJLJ, being a call-site
++  // FIXME2: _Unwind_GetIPInfo is nonsensical for SJLJ, being a call-site
+   // index instead of a PC value.  We could perhaps arrange for
+   // _Unwind_GetRegionStart to return context->fc->jbuf[1], which
+   // is the address of the handler label for __builtin_longjmp, but
+@@ -232,7 +233,9 @@ PERSONALITY_FUNCTION (int version,
+ 
+   // Parse the LSDA header.
+   p = parse_lsda_header (context, language_specific_data, &info);
+-  ip = _Unwind_GetIP (context) - 1;
++  ip = _Unwind_GetIPInfo (context, &ip_before_insn);
++  if (! ip_before_insn)
++    --ip;
+   landing_pad = 0;
+   action_record = 0;
+   handler_switch_value = 0;
+--- libjava/include/i386-signal.h.jj	2005-11-21 14:47:15.000000000 +0100
++++ libjava/include/i386-signal.h	2006-04-21 14:57:55.000000000 +0200
+@@ -22,19 +22,7 @@ details.  */
+ #define SIGNAL_HANDLER(_name)	\
+ static void _name (int _dummy)
+ 
+-#define MAKE_THROW_FRAME(_exception)					\
+-do									\
+-{									\
+-  void **_p = (void **)&_dummy;						\
+-  struct sigcontext_struct *_regs = (struct sigcontext_struct *)++_p;	\
+-									\
+-  /* Advance the program counter so that it is after the start of the	\
+-     instruction:  the x86 exception handler expects			\
+-     the PC to point to the instruction after a call. */		\
+-  _regs->eip += 2;							\
+-									\
+-}									\
+-while (0)
++#define MAKE_THROW_FRAME(_exception)
+ 
+ #define HANDLE_DIVIDE_OVERFLOW						\
+ do									\
+@@ -84,14 +72,6 @@ do									\
+ 	  _regs->eip = (unsigned long)_eip;				\
+ 	  return;							\
+ 	}								\
+-      else								\
+-	{								\
+-	  /* Advance the program counter so that it is after the start	\
+-	     of the instruction: this is because the x86 exception	\
+-	     handler expects the PC to point to the instruction after a	\
+-	     call. */							\
+-	  _regs->eip += 2;						\
+-	}								\
+     }									\
+ }									\
+ while (0)
+--- libjava/include/x86_64-signal.h.jj	2006-04-20 17:02:27.000000000 +0200
++++ libjava/include/x86_64-signal.h	2006-04-21 14:00:19.000000000 +0200
+@@ -34,17 +34,7 @@ extern "C" 
+   };
+ }
+ 
+-#define MAKE_THROW_FRAME(_exception)					     \
+-do									     \
+-{									     \
+-  /* Advance the program counter so that it is after the start of the	     \
+-     instruction:  the x86_64 exception handler expects			     \
+-     the PC to point to the instruction after a call. */		     \
+-  struct ucontext *_uc = (struct ucontext *)_p;				     \
+-  volatile struct sigcontext *_sc = (struct sigcontext *) &_uc->uc_mcontext; \
+-  _sc->rip += 2;							     \
+-}									     \
+-while (0)
++#define MAKE_THROW_FRAME(_exception)
+ 
+ #define RESTORE(name, syscall) RESTORE2 (name, syscall)
+ #define RESTORE2(name, syscall)			\
+--- libjava/include/powerpc-signal.h.jj	2005-11-21 14:47:15.000000000 +0100
++++ libjava/include/powerpc-signal.h	2006-04-21 14:00:19.000000000 +0200
+@@ -22,18 +22,12 @@ details.  */
+ #define SIGNAL_HANDLER(_name)						\
+   static void _name (int /* _signal */, struct sigcontext *_sc)
+ 
+-/* PPC either leaves PC pointing at a faulting instruction or the
+-   following instruction, depending on the signal.  SEGV always does
+-   the former, so we adjust the saved PC to point to the following
+-   instruction. This is what the handler in libgcc expects.  */
++/* MD_FALBACK_FRAME_STATE_FOR takes care of special casing PC
++   before the faulting instruction, so we don't need to do anything
++   here.  */
++
++#define MAKE_THROW_FRAME(_exception)
+ 
+-#define MAKE_THROW_FRAME(_exception)					\
+-do									\
+-  {									\
+-    _sc->regs->nip += 4;						\
+-  }									\
+-while (0)
+-  
+ /* For an explanation why we cannot simply use sigaction to
+    install the handlers, see i386-signal.h.  */
+ 
+--- libstdc++-v3/libsupc++/eh_personality.cc.jj	2005-11-21 14:43:32.000000000 +0100
++++ libstdc++-v3/libsupc++/eh_personality.cc	2006-04-21 14:24:34.000000000 +0200
+@@ -201,6 +201,7 @@ PERSONALITY_FUNCTION (int version,
+   _Unwind_Ptr landing_pad, ip;
+   int handler_switch_value;
+   void *thrown_ptr = xh + 1;
++  int ip_before_insn = 0;
+ 
+   // Interface version check.
+   if (version != 1)
+@@ -227,7 +228,9 @@ PERSONALITY_FUNCTION (int version,
+   // Parse the LSDA header.
+   p = parse_lsda_header (context, language_specific_data, &info);
+   info.ttype_base = base_of_encoded_value (info.ttype_encoding, context);
+-  ip = _Unwind_GetIP (context) - 1;
++  ip = _Unwind_GetIPInfo (context, &ip_before_insn);
++  if (! ip_before_insn)
++    --ip;
+   landing_pad = 0;
+   action_record = 0;
+   handler_switch_value = 0;
+--- gcc/libgcc-std.ver.jj	2005-11-21 14:43:21.000000000 +0100
++++ gcc/libgcc-std.ver	2006-04-21 14:02:13.000000000 +0200
+@@ -234,3 +234,8 @@ GCC_3.4.4 {
+   __negvti2
+   __subvti3
+ }
++
++%inherit GCC_4.2.0 GCC_3.4.4
++GCC_4.2.0 {
++  _Unwind_GetIPInfo
++}
+--- gcc/unwind-c.c.jj	2005-11-21 14:43:20.000000000 +0100
++++ gcc/unwind-c.c	2006-04-21 14:00:08.000000000 +0200
+@@ -102,6 +102,7 @@ PERSONALITY_FUNCTION (int version,
+   lsda_header_info info;
+   const unsigned char *language_specific_data, *p, *action_record;
+   _Unwind_Ptr landing_pad, ip;
++  int ip_before_insn = 0;
+ 
+   if (version != 1)
+     return _URC_FATAL_PHASE1_ERROR;
+@@ -119,7 +120,9 @@ PERSONALITY_FUNCTION (int version,
+ 
+   /* Parse the LSDA header.  */
+   p = parse_lsda_header (context, language_specific_data, &info);
+-  ip = _Unwind_GetIP (context) - 1;
++  ip = _Unwind_GetIPInfo (context, &ip_before_insn);
++  if (! ip_before_insn)
++    --ip;
+   landing_pad = 0;
+ 
+ #ifdef __USING_SJLJ_EXCEPTIONS__
+--- gcc/config/s390/linux.h.jj	2005-11-21 14:40:55.000000000 +0100
++++ gcc/config/s390/linux.h	2006-04-21 14:15:46.000000000 +0200
+@@ -113,6 +113,7 @@ Software Foundation, 59 Temple Place - S
+       } __attribute__ ((__aligned__ (8))) sigregs_;			\
+ 									\
+     sigregs_ *regs_;							\
++    int *signo_ = NULL;							\
+ 									\
+     /* svc $__NR_sigreturn or svc $__NR_rt_sigreturn  */		\
+     if (pc_[0] != 0x0a || (pc_[1] != 119 && pc_[1] != 173))		\
+@@ -133,6 +134,7 @@ Software Foundation, 59 Temple Place - S
+ 	  } *uc_ = (CONTEXT)->cfa + 8 + 128;				\
+ 									\
+ 	regs_ = &uc_->uc_mcontext;					\
++	signo_ = (CONTEXT)->cfa + sizeof(long);				\
+       }									\
+ 									\
+     /* Old-style RT frame and all non-RT frames:			\
+@@ -141,6 +143,11 @@ Software Foundation, 59 Temple Place - S
+     else								\
+       {									\
+ 	regs_ = *(sigregs_ **)((CONTEXT)->cfa + 8);			\
++	/* Recent kernels store the signal number immediately after	\
++	   the sigregs; old kernels have the return trampoline at	\
++	   this location.  */						\
++	if ((void *)(regs_ + 1) != (CONTEXT)->ra)			\
++	  signo_ = (int *)(regs_ + 1);					\
+       }									\
+       									\
+     new_cfa_ = regs_->gprs[15] + 16*sizeof(long) + 32;			\
+@@ -167,6 +174,12 @@ Software Foundation, 59 Temple Place - S
+     (FS)->regs.reg[32].loc.offset = (long)&regs_->psw_addr - new_cfa_;	\
+     (FS)->retaddr_column = 32;						\
+ 									\
++    /* SIGILL, SIGFPE and SIGTRAP are delivered with psw_addr		\
++       after the faulting instruction rather than before it.		\
++       Don't set FS->signal_frame in that case.  */			\
++    if (!signo_ || (*signo_ != 4 && *signo_ != 5 && *signo_ != 8))	\
++      (FS)->signal_frame = 1;						\
++									\
+     goto SUCCESS;							\
+   } while (0)
+ 
+--- gcc/config/i386/linux.h.jj	2005-11-21 14:41:07.000000000 +0100
++++ gcc/config/i386/linux.h	2006-04-21 14:18:05.000000000 +0200
+@@ -268,6 +268,7 @@ Boston, MA 02111-1307, USA.  */
+     (FS)->regs.reg[8].how = REG_SAVED_OFFSET;				\
+     (FS)->regs.reg[8].loc.offset = (long)&sc_->eip - new_cfa_;		\
+     (FS)->retaddr_column = 8;						\
++    (FS)->signal_frame = 1;						\
+     goto SUCCESS;							\
+   } while (0)
+ #endif /* not USE_GNULIBC_1 */
+--- gcc/config/i386/linux64.h.jj	2005-11-21 14:41:07.000000000 +0100
++++ gcc/config/i386/linux64.h	2006-04-21 14:18:45.000000000 +0200
+@@ -136,6 +136,7 @@ Boston, MA 02111-1307, USA.  */
+     (FS)->regs.reg[16].how = REG_SAVED_OFFSET;				\
+     (FS)->regs.reg[16].loc.offset = (long)&sc_->rip - new_cfa_;		\
+     (FS)->retaddr_column = 16;						\
++    (FS)->signal_frame = 1;						\
+     goto SUCCESS;							\
+   } while (0)
+ #else /* ifdef __x86_64__  */
+@@ -190,6 +191,7 @@ Boston, MA 02111-1307, USA.  */
+     (FS)->regs.reg[8].how = REG_SAVED_OFFSET;				\
+     (FS)->regs.reg[8].loc.offset = (long)&sc_->eip - new_cfa_;		\
+     (FS)->retaddr_column = 8;						\
++    (FS)->signal_frame = 1;						\
+     goto SUCCESS;							\
+   } while (0)
+ #endif /* ifdef __x86_64__  */
+--- gcc/config/ia64/unwind-ia64.c.jj	2005-11-21 14:40:57.000000000 +0100
++++ gcc/config/ia64/unwind-ia64.c	2006-04-21 14:00:11.000000000 +0200
+@@ -1748,6 +1748,13 @@ _Unwind_GetIP (struct _Unwind_Context *c
+   return context->rp;
+ }
+ 
++inline _Unwind_Ptr
++_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
++{
++  *ip_before_insn = 0;
++  return context->rp;
++}
++
+ /* Overwrite the return address for CONTEXT with VAL.  */
+ 
+ inline void
+--- gcc/unwind-compat.c.jj	2005-11-21 14:43:20.000000000 +0100
++++ gcc/unwind-compat.c	2006-04-21 13:59:59.000000000 +0200
+@@ -134,6 +134,13 @@ _Unwind_GetIP (struct _Unwind_Context *c
+ }
+ symver (_Unwind_GetIP, GCC_3.0);
+ 
++_Unwind_Ptr
++_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
++{
++  *ip_before_insn = 0;
++  return __libunwind_Unwind_GetIP (context);
++}
++
+ extern void *__libunwind_Unwind_GetLanguageSpecificData
+   (struct _Unwind_Context *);
+ 
+--- gcc/unwind-sjlj.c.jj	2005-11-21 14:43:21.000000000 +0100
++++ gcc/unwind-sjlj.c	2006-04-21 14:00:08.000000000 +0200
+@@ -202,6 +202,13 @@ _Unwind_GetIP (struct _Unwind_Context *c
+   return context->fc->call_site + 1;
+ }
+ 
++_Unwind_Ptr
++_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
++{
++  *ip_before_insn = 0;
++  return context->fc->call_site + 1;
++}
++
+ /* Set the return landing pad index in CONTEXT.  */
+ 
+ void
+--- gcc/unwind.h.jj	2005-11-21 14:43:20.000000000 +0100
++++ gcc/unwind.h	2006-04-21 14:08:51.000000000 +0200
+@@ -151,6 +151,7 @@ extern _Unwind_Word _Unwind_GetGR (struc
+ extern void _Unwind_SetGR (struct _Unwind_Context *, int, _Unwind_Word);
+ 
+ extern _Unwind_Ptr _Unwind_GetIP (struct _Unwind_Context *);
++extern _Unwind_Ptr _Unwind_GetIPInfo (struct _Unwind_Context *, int *);
+ extern void _Unwind_SetIP (struct _Unwind_Context *, _Unwind_Ptr);
+ 
+ /* @@@ Retrieve the CFA of the given context.  */
+--- gcc/unwind-dw2.c.jj	2005-11-21 14:43:21.000000000 +0100
++++ gcc/unwind-dw2.c	2006-04-21 14:05:32.000000000 +0200
+@@ -82,6 +82,7 @@ struct _Unwind_Context
+   void *lsda;
+   struct dwarf_eh_bases bases;
+   _Unwind_Word args_size;
++  char signal_frame;
+ };
+ 
+ /* Byte size of every register managed by these routines.  */
+@@ -137,6 +138,7 @@ typedef struct
+   unsigned char fde_encoding;
+   unsigned char lsda_encoding;
+   unsigned char saw_z;
++  unsigned char signal_frame;
+   void *eh_ptr;
+ } _Unwind_FrameState;
+ 
+@@ -271,6 +273,16 @@ _Unwind_GetIP (struct _Unwind_Context *c
+   return (_Unwind_Ptr) context->ra;
+ }
+ 
++/* Retrieve the return address and flag whether that IP is before
++   or after first not yet fully executed instruction.  */
++
++inline _Unwind_Ptr
++_Unwind_GetIPInfo (struct _Unwind_Context *context, int *ip_before_insn)
++{
++  *ip_before_insn = context->signal_frame != 0;
++  return (_Unwind_Ptr) context->ra;
++}
++
+ /* Overwrite the return address for CONTEXT with VAL.  */
+ 
+ inline void
+@@ -382,6 +394,13 @@ extract_cie_info (const struct dwarf_cie
+ 	  aug += 1;
+ 	}
+ 
++      /* "S" indicates a signal frame.  */
++      else if (aug[0] == 'S')
++	{
++	  fs->signal_frame = 1;
++	  aug += 1;
++	}
++
+       /* Otherwise we have an unknown augmentation string.
+ 	 Bail unless we saw a 'z' prefix.  */
+       else
+@@ -818,8 +837,10 @@ execute_cfa_program (const unsigned char
+      a different stack configuration that we are not interested in.  We
+      assume that the call itself is unwind info-neutral; if not, or if
+      there are delay instructions that adjust the stack, these must be
+-     reflected at the point immediately before the call insn.  */
+-  while (insn_ptr < insn_end && fs->pc < context->ra)
++     reflected at the point immediately before the call insn.
++     In signal frames, return address is after last completed instruction,
++     so we add 1 to return address to make the comparison <=.  */
++  while (insn_ptr < insn_end && fs->pc < context->ra + context->signal_frame)
+     {
+       unsigned char insn = *insn_ptr++;
+       _Unwind_Word reg, utmp;
+@@ -1021,7 +1042,8 @@ uw_frame_state_for (struct _Unwind_Conte
+   if (context->ra == 0)
+     return _URC_END_OF_STACK;
+ 
+-  fde = _Unwind_Find_FDE (context->ra - 1, &context->bases);
++  fde = _Unwind_Find_FDE (context->ra + context->signal_frame - 1,
++			  &context->bases);
+   if (fde == NULL)
+     {
+       /* Couldn't find frame unwind info for this function.  Try a
+@@ -1376,6 +1398,8 @@ uw_update_context_1 (struct _Unwind_Cont
+ 	break;
+       }
+ 
++  context->signal_frame = fs->signal_frame;
++
+   MD_FROB_UPDATE_CONTEXT (context, fs);
+ }
+ 
+--- gcc/unwind-dw2.c.jj	2006-05-22 13:39:48.000000000 -0400
++++ gcc/unwind-dw2.c	2006-05-22 13:48:20.000000000 -0400
+@@ -40,6 +40,7 @@
+ #include "unwind-pe.h"
+ #include "unwind-dw2-fde.h"
+ #include "gthr.h"
++#include <endian.h>
+ 
+ 
+ #ifndef __USING_SJLJ_EXCEPTIONS__
+@@ -81,8 +82,15 @@ struct _Unwind_Context
+   void *ra;
+   void *lsda;
+   struct dwarf_eh_bases bases;
+-  _Unwind_Word args_size;
+-  char signal_frame;
++#if __BYTE_ORDER == __BIG_ENDIAN
++  _Unwind_Word signal_frame : 1;
++  _Unwind_Word args_size : sizeof (_Unwind_Word) * 8 - 1;
++#elif __BYTE_ORDER == __LITTLE_ENDIAN
++  _Unwind_Word args_size : sizeof (_Unwind_Word) * 8 - 1;
++  _Unwind_Word signal_frame : 1;
++#else
++#error Unknown endianity
++#endif
+ };
+ 
+ /* Byte size of every register managed by these routines.  */
+@@ -1003,7 +1011,13 @@ execute_cfa_program (const unsigned char
+ 	  break;
+ 
+ 	case DW_CFA_GNU_args_size:
+-	  insn_ptr = read_uleb128 (insn_ptr, &context->args_size);
++	  {
++	    _Unwind_Word args_size;
++	    insn_ptr = read_uleb128 (insn_ptr, &args_size);
++	    context->args_size = args_size;
++	    if (context->args_size != args_size)
++	      abort ();
++	  }
+ 	  break;
+ 
+ 	case DW_CFA_GNU_negative_offset_extended:
+--- libjava/exception.cc.jj	2006-05-22 13:39:48.000000000 -0400
++++ libjava/exception.cc	2006-05-22 14:48:30.000000000 -0400
+@@ -31,6 +31,153 @@ namespace std
+ }
+ #include "unwind.h"
+ 
++#if defined PIC && !defined __ia64__
++
++#include <dlfcn.h>
++
++extern "C" {
++
++static void *libgcc_s_handle;
++
++_Unwind_Reason_Code __attribute__((visibility ("hidden")))
++_Unwind_RaiseException (struct _Unwind_Exception *exc)
++{
++  static _Unwind_Reason_Code (*RaiseException) (struct _Unwind_Exception *);
++
++  if (RaiseException == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      RaiseException = (__typeof (RaiseException))
++	dlsym (libgcc_s_handle, "_Unwind_RaiseException");
++    }
++  return RaiseException (exc);
++}
++
++void __attribute__((visibility ("hidden")))
++_Unwind_Resume (struct _Unwind_Exception *exc)
++{
++  static void (*Resume) (struct _Unwind_Exception *);
++
++  if (Resume == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      Resume = (__typeof (Resume))
++	dlsym (libgcc_s_handle, "_Unwind_Resume");
++    }
++  Resume (exc);
++}
++
++__attribute__((visibility ("hidden"))) void * 
++_Unwind_GetLanguageSpecificData (struct _Unwind_Context *ctx)
++{
++  static void * (*GetLanguageSpecificData) (struct _Unwind_Context *);
++
++  if (GetLanguageSpecificData == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      GetLanguageSpecificData = (__typeof (GetLanguageSpecificData))
++	dlsym (libgcc_s_handle, "_Unwind_GetLanguageSpecificData");
++    }
++  return GetLanguageSpecificData (ctx);
++}
++
++_Unwind_Ptr __attribute__((visibility ("hidden")))
++_Unwind_GetRegionStart (struct _Unwind_Context *ctx)
++{
++  static _Unwind_Ptr (*GetRegionStart) (struct _Unwind_Context *);
++
++  if (GetRegionStart == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      GetRegionStart = (__typeof (GetRegionStart))
++	dlsym (libgcc_s_handle, "_Unwind_GetRegionStart");
++    }
++  return GetRegionStart (ctx);
++}
++
++_Unwind_Ptr __attribute__((visibility ("hidden")))
++_Unwind_GetDataRelBase (struct _Unwind_Context *ctx)
++{
++  static _Unwind_Ptr (*GetDataRelBase) (struct _Unwind_Context *);
++
++  if (GetDataRelBase == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      GetDataRelBase = (__typeof (GetDataRelBase))
++	dlsym (libgcc_s_handle, "_Unwind_GetDataRelBase");
++    }
++  return GetDataRelBase (ctx);
++}
++
++_Unwind_Ptr __attribute__((visibility ("hidden")))
++_Unwind_GetTextRelBase (struct _Unwind_Context *ctx)
++{
++  static _Unwind_Ptr (*GetTextRelBase) (struct _Unwind_Context *);
++
++  if (GetTextRelBase == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      GetTextRelBase = (__typeof (GetTextRelBase))
++	dlsym (libgcc_s_handle, "_Unwind_GetTextRelBase");
++    }
++  return GetTextRelBase (ctx);
++}
++
++_Unwind_Ptr __attribute__((visibility ("hidden")))
++_Unwind_GetIPInfo (struct _Unwind_Context *ctx, int *ip)
++{
++  static _Unwind_Ptr (*GetIPInfo) (struct _Unwind_Context *, int *ip);
++
++  if (GetIPInfo == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      GetIPInfo = (__typeof (GetIPInfo))
++	dlsym (libgcc_s_handle, "_Unwind_GetIPInfo");
++    }
++  return GetIPInfo (ctx, ip);
++}
++
++void __attribute__((visibility ("hidden")))
++_Unwind_SetIP (struct _Unwind_Context *ctx, _Unwind_Ptr ip)
++{
++  static void (*SetIP) (struct _Unwind_Context *, _Unwind_Ptr ip);
++
++  if (SetIP == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      SetIP = (__typeof (SetIP))
++	dlsym (libgcc_s_handle, "_Unwind_SetIP");
++    }
++  SetIP (ctx, ip);
++}
++
++void __attribute__((visibility ("hidden")))
++_Unwind_SetGR (struct _Unwind_Context *ctx, int num, _Unwind_Ptr gr)
++{
++  static void (*SetGR) (struct _Unwind_Context *, int num, _Unwind_Ptr gr);
++
++  if (SetGR == NULL)
++    {
++      if (libgcc_s_handle == NULL)
++	libgcc_s_handle = dlopen ("libgcc_s.so.1", RTLD_LAZY);
++      SetGR = (__typeof (SetGR))
++	dlsym (libgcc_s_handle, "_Unwind_SetGR");
++    }
++  SetGR (ctx, num, gr);
++}
++
++}
++
++#endif
++
+ struct alignment_test_struct
+ {
+   char space;
+2005-05-08  Roger Sayle  <roger@eyesopen.com>
+
+	PR inline-asm/8788
+	* stmt.c (expand_asm_operands): Avoid calling force_reg on BLKmode
+	operands.
+
+	* gcc.dg/pr8788-1.c: New testcase.
+
+--- gcc/stmt.c	(revision 99421)
++++ gcc/stmt.c	(revision 99422)
+@@ -877,7 +877,7 @@ expand_asm_operands (tree string, tree o
+ 
+       if (asm_operand_ok (op, constraint) <= 0)
+ 	{
+-	  if (allows_reg)
++	  if (allows_reg && TYPE_MODE (type) != BLKmode)
+ 	    op = force_reg (TYPE_MODE (type), op);
+ 	  else if (!allows_mem)
+ 	    warning (0, "asm operand %d probably doesn%'t match constraints",
+--- gcc/testsuite/gcc.dg/pr8788-1.c	(revision 0)
++++ gcc/testsuite/gcc.dg/pr8788-1.c	(revision 99422)
+@@ -0,0 +1,20 @@
++/* PR inline-asm/8788 */
++/* { dg-do compile } */
++/* { dg-options "-O2" } */
++
++typedef struct {
++    long x[6];
++} myjmp_buf;
++
++typedef struct {
++    myjmp_buf regs;
++} my_stack;
++
++void switch_to_stack (my_stack *stack){
++    asm (  /* { dg-error "impossible constraint" } */
++/* { dg-warning "asm operand 1" "asm operand 1" { target *-*-* } 14 } */
++        "\n"
++        : "+r" (stack->regs)
++    );
++}
++
+2005-11-30  Alexandre Oliva  <aoliva@redhat.com>
+
+	* gcc.c (find_a_file): Use update_path before access tests.
+	Mostly from Thomas Walker <thomas.walker@morganstanley.com>
+	* prefix.c (update_path): Move dir/../-stripping code to...
+	(maybe_strip_dotdots): New function.  Reorganize.
+
+--- gcc/gcc.c.orig	2005-12-01 18:38:38.000000000 -0200
++++ gcc/gcc.c	2005-12-01 18:41:01.000000000 -0200
+@@ -2371,7 +2371,7 @@
+ find_a_file (struct path_prefix *pprefix, const char *name, int mode,
+ 	     int multilib)
+ {
+-  char *temp;
++  char *temp, *temp2;
+   const char *const file_suffix =
+     ((mode & X_OK) != 0 ? HOST_EXECUTABLE_SUFFIX : "");
+   struct prefix_list *pl;
+@@ -2407,19 +2407,18 @@
+ 				    NULL));
+     }
+ 
+-  temp = xmalloc (len);
+-
+   /* Determine the filename to execute (special case for absolute paths).  */
+ 
+   if (IS_ABSOLUTE_PATH (name))
+     {
+-      if (access (name, mode) == 0)
+-	{
+-	  strcpy (temp, name);
+-	  return temp;
+-	}
++      /* IS_ABSOLUTE_PATHNAME lets anything through that starts with '/'  */
++      temp = update_path (name, NULL);
++      if (access (temp, mode) == 0)
++	return temp;
+     }
+   else
++  {
++    temp = xmalloc (len);
+     for (pl = pprefix->plist; pl; pl = pl->next)
+       {
+ 	const char *this_name
+@@ -2435,24 +2434,30 @@
+ 		strcat (temp, machine_suffix);
+ 		strcat (temp, multilib_name);
+ 		strcat (temp, file_suffix);
+-		if (access_check (temp, mode) == 0)
++		temp2 = update_path (temp, NULL);
++		if (access_check (temp2, mode) == 0)
+ 		  {
+ 		    if (pl->used_flag_ptr != 0)
+ 		      *pl->used_flag_ptr = 1;
+-		    return temp;
++		    free (temp);
++		    return temp2;
+ 		  }
++		free (temp2);
+ 	      }
+ 
+ 	    /* Now try just the multilib_name.  */
+ 	    strcpy (temp, pl->prefix);
+ 	    strcat (temp, machine_suffix);
+ 	    strcat (temp, multilib_name);
+-	    if (access_check (temp, mode) == 0)
++	    temp2 = update_path (temp, NULL);
++	    if (access_check (temp2, mode) == 0)
+ 	      {
+ 		if (pl->used_flag_ptr != 0)
+ 		  *pl->used_flag_ptr = 1;
+-		return temp;
++		free (temp);
++		return temp2;
+ 	      }
++	    free (temp2);
+ 	  }
+ 
+ 	/* Certain prefixes are tried with just the machine type,
+@@ -2467,23 +2472,29 @@
+ 		strcat (temp, just_machine_suffix);
+ 		strcat (temp, multilib_name);
+ 		strcat (temp, file_suffix);
+-		if (access_check (temp, mode) == 0)
++		temp2 = update_path (temp, NULL);
++		if (access_check (temp2, mode) == 0)
+ 		  {
+ 		    if (pl->used_flag_ptr != 0)
+ 		      *pl->used_flag_ptr = 1;
+-		    return temp;
++		    free (temp);
++		    return temp2;
+ 		  }
++		free (temp2);
+ 	      }
+ 
+ 	    strcpy (temp, pl->prefix);
+ 	    strcat (temp, just_machine_suffix);
+ 	    strcat (temp, multilib_name);
+-	    if (access_check (temp, mode) == 0)
++	    temp2 = update_path (temp, NULL);
++	    if (access_check (temp2, mode) == 0)
+ 	      {
+ 		if (pl->used_flag_ptr != 0)
+ 		  *pl->used_flag_ptr = 1;
+-		return temp;
++		free (temp);
++		return temp2;
+ 	      }
++	    free (temp2);
+ 	  }
+ 
+ 	/* Certain prefixes can't be used without the machine suffix
+@@ -2497,24 +2508,31 @@
+ 		strcpy (temp, pl->prefix);
+ 		strcat (temp, this_name);
+ 		strcat (temp, file_suffix);
+-		if (access_check (temp, mode) == 0)
++		temp2 = update_path (temp, NULL);
++		if (access_check (temp2, mode) == 0)
+ 		  {
+ 		    if (pl->used_flag_ptr != 0)
+ 		      *pl->used_flag_ptr = 1;
+-		    return temp;
++		    free (temp);
++		    return temp2;
+ 		  }
++		free (temp2);
+ 	      }
+ 
+ 	    strcpy (temp, pl->prefix);
+ 	    strcat (temp, this_name);
+-	    if (access_check (temp, mode) == 0)
++	    temp2 = update_path (temp, NULL);
++	    if (access_check (temp2, mode) == 0)
+ 	      {
+ 		if (pl->used_flag_ptr != 0)
+ 		  *pl->used_flag_ptr = 1;
+-		return temp;
++		free (temp);
++		return temp2;
+ 	      }
++	    free (temp2);
+ 	  }
+       }
++  }
+ 
+   free (temp);
+   return 0;
+--- gcc/prefix.c.orig	2005-12-01 18:38:38.000000000 -0200
++++ gcc/prefix.c	2005-12-01 18:46:37.000000000 -0200
+@@ -238,6 +238,105 @@
+   while (*string++);
+ }
+ 
++/* Strip dir/.. from a pathname when it makes sense, e.g., when this
++   would turn an inaccessible pathname into an accessible one.
++
++   We short-circuit dir/.. when dir does not exist, and when
++   some/dir/../thing does not exist but some/thing does.  In case
++   there are multiple possible dir/../ stripping possibilities that
++   would turn an inaccessible pathname into an accessible one, the one
++   closer to the end of the pathname is preferred.
++
++   RESULT is the pathname that might contain such dotdot sequences to
++   be stripped.  P points into RESULT, and indicates the location
++   where we should start looking for ../ sequences.
++
++   Even though RESULT is const, P is not, and that's because
++   characters in it may be temporarily overwritten, so RESULT must not
++   be in read-only storage.
++
++   The returned value is either a newly-allocated memory area, holding
++   a string that is the result of dotdot-stripping from the original
++   input strip, or RESULT itself, in which case any modifications made
++   to the string will have been undone.  */
++
++static const char *
++maybe_strip_dotdots (const char *result, char *p)
++{
++  char *temp;
++  const char *path, *before, *after;
++  size_t len;
++
++  while (1)
++    {
++      p = strchr (p, '.');
++      if (p == NULL)
++	return result;
++      /* Look for `/../'  */
++      if (p[1] == '.'
++	  && IS_DIR_SEPARATOR (p[2])
++	  && (p != result && IS_DIR_SEPARATOR (p[-1])))
++	break;
++      else
++	++p;
++    }
++
++  *p = 0;
++  if (access (result, X_OK) == 0)
++    {
++      *p = '.';
++
++      path = maybe_strip_dotdots (result, p + 3);
++      if (access (path, F_OK) == 0)
++	return path;
++      if (path != result)
++	free ((char *) path);
++    }
++  else
++    *p = '.';
++
++  /* If we couldn't access the dir, or if recursion resulted in a
++     non-accessible pathname, we try stripping out dir/../.  If `dir'
++     turns out to be `.', strip one more path component.  */
++  before = p;
++  do
++    {
++      --before;
++      while (before != result && IS_DIR_SEPARATOR (*before))
++	--before;
++      while (before != result && !IS_DIR_SEPARATOR (before[-1]))
++	--before;
++    }
++  while (before != result && *before == '.'
++	 && IS_DIR_SEPARATOR (*(before + 1)));
++  /* If we have something like `./..' or `/..', don't
++     strip anything more.  */
++  if (*before == '.' || IS_DIR_SEPARATOR (*before))
++    return result;
++
++  after = p + 3;
++  while (IS_DIR_SEPARATOR (*after))
++    ++after;
++
++  len = (after - result) + strlen (after);
++
++  temp = xmalloc (len + 1 - (after - before));
++  memcpy (temp, result, before - result);
++  memcpy (temp + (before - result), after, len + 1 - (after - result));
++
++  path = maybe_strip_dotdots (temp, temp + (before - result));
++
++  if (path != temp)
++    free (temp);
++
++  if (access (path, F_OK) == 0)
++    result = path;
++  else if (path != result)
++    free ((char *) path);
++
++  return result;
++}
++
+ /* Update PATH using KEY if PATH starts with PREFIX.  The returned
+    string is always malloc-ed, and the caller is responsible for
+    freeing it.  */
+@@ -245,7 +344,7 @@
+ char *
+ update_path (const char *path, const char *key)
+ {
+-  char *result, *p;
++  char *result, *temp;
+ 
+   if (! strncmp (path, std_prefix, strlen (std_prefix)) && key != 0)
+     {
+@@ -265,62 +364,11 @@
+   else
+     result = xstrdup (path);
+ 
+-#ifndef ALWAYS_STRIP_DOTDOT
+-#define ALWAYS_STRIP_DOTDOT 0
+-#endif
++  temp = result;
++  result = (char *) maybe_strip_dotdots (temp, temp);
+ 
+-  p = result;
+-  while (1)
+-    {
+-      char *src, *dest;
+-
+-      p = strchr (p, '.');
+-      if (p == NULL)
+-	break;
+-      /* Look for `/../'  */
+-      if (p[1] == '.'
+-	  && IS_DIR_SEPARATOR (p[2])
+-	  && (p != result && IS_DIR_SEPARATOR (p[-1])))
+-	{
+-	  *p = 0;
+-	  if (!ALWAYS_STRIP_DOTDOT && access (result, X_OK) == 0)
+-	    {
+-	      *p = '.';
+-	      break;
+-	    }
+-	  else
+-	    {
+-	      /* We can't access the dir, so we won't be able to
+-		 access dir/.. either.  Strip out `dir/../'.  If `dir'
+-		 turns out to be `.', strip one more path component.  */
+-	      dest = p;
+-	      do
+-		{
+-		  --dest;
+-		  while (dest != result && IS_DIR_SEPARATOR (*dest))
+-		    --dest;
+-		  while (dest != result && !IS_DIR_SEPARATOR (dest[-1]))
+-		    --dest;
+-		}
+-	      while (dest != result && *dest == '.');
+-	      /* If we have something like `./..' or `/..', don't
+-		 strip anything more.  */
+-	      if (*dest == '.' || IS_DIR_SEPARATOR (*dest))
+-		{
+-		  *p = '.';
+-		  break;
+-		}
+-	      src = p + 3;
+-	      while (IS_DIR_SEPARATOR (*src))
+-		++src;
+-	      p = dest;
+-	      while ((*dest++ = *src++) != 0)
+-		;
+-	    }
+-	}
+-      else
+-	++p;
+-    }
++  if (result != temp)
++    free (temp);
+ 
+ #ifdef UPDATE_PATH_HOST_CANONICALIZE
+   /* Perform host dependent canonicalization when needed.  */
+2005-09-29  Alexandre Oliva  <aoliva@redhat.com>
+
+	* error.c (dump_type) <UNKNOWN_TYPE>: Print reworded message.
+
+	* g++.dg/overload/unknown1.C: New.
+
+--- gcc/cp/error.c.orig	2004-11-07 11:22:11.000000000 -0200
++++ gcc/cp/error.c	2005-09-29 16:13:20.000000000 -0300
+@@ -302,7 +302,7 @@
+   switch (TREE_CODE (t))
+     {
+     case UNKNOWN_TYPE:
+-      pp_identifier (cxx_pp, "<unknown type>");
++      pp_identifier (cxx_pp, "<unresolved overloaded function type>");
+       break;
+ 
+     case TREE_LIST:
+--- gcc/testsuite/g++.dg/overload/unknown1.C	1970-01-01 00:00:00.000000000 +0000
++++ gcc/testsuite/g++.dg/overload/unknown1.C	2005-09-29 16:12:49.000000000 -0300
+@@ -0,0 +1,9 @@
++// { dg-do compile }
++
++void foo(void);
++int foo(int);
++template <typename T> void bar(T f);
++
++void baz() {
++  bar(foo); // { dg-error "<unresolved overloaded function type>" }
++}
+2005-12-18  Alexandre Oliva  <aoliva@redhat.com>
+
+	* optabs.c (expand_vector_binop): Do not use a SUBREG to modify
+	a subword in the output if it matches any of the inputs.
+
+2006-04-20  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.c-torture/execute/20060420-1.c: New test.
+
+--- gcc/optabs.c.orig	2005-11-21 11:43:20.000000000 -0200
++++ gcc/optabs.c	2005-12-18 18:35:14.000000000 -0200
+@@ -1933,16 +1933,19 @@
+ 
+       for (i = 0; i < elts; ++i)
+ 	{
+-	  /* If this is part of a register, and not the first item in the
+-	     word, we can't store using a SUBREG - that would clobber
+-	     previous results.
++	  /* If this is part of a register, and not the first item in
++	     the word, we can't store using a SUBREG - that would
++	     clobber previous results, or even the input operands, if
++	     target matches any of them.
+ 	     And storing with a SUBREG is only possible for the least
+ 	     significant part, hence we can't do it for big endian
+ 	     (unless we want to permute the evaluation order.  */
+ 	  if (GET_CODE (target) == REG
+ 	      && (BYTES_BIG_ENDIAN
+ 		  ? subsize < UNITS_PER_WORD
+-		  : ((i * subsize) % UNITS_PER_WORD) != 0))
++		  : (((i * subsize) % UNITS_PER_WORD) != 0
++		     || (subsize < UNITS_PER_WORD
++			 && (target == op0 || target == op1)))))
+ 	    t = NULL_RTX;
+ 	  else
+ 	    t = simplify_gen_subreg (submode, target, mode, i * subsize);
+--- gcc/testsuite/gcc.c-torture/execute/20060420-1.c.jj	2006-04-20 18:47:19.000000000 +0200
++++ gcc/testsuite/gcc.c-torture/execute/20060420-1.c	2006-04-20 19:07:20.000000000 +0200
+@@ -0,0 +1,71 @@
++extern void abort (void);
++
++typedef float v4flt __attribute__ ((vector_size (16)));
++
++void __attribute__ ((noinline)) foo (float *dst, float **src, int a, int n)
++{
++  int i, j;
++  int z = sizeof (v4flt) / sizeof (float);
++  unsigned m = sizeof (v4flt) - 1;
++
++  for (j = 0; j < n && (((unsigned long) dst + j) & m); ++j)
++    {
++      float t = src[0][j];
++      for (i = 1; i < a; ++i)
++	t += src[i][j];
++      dst[j] = t;
++    }
++
++  for (; j < (n - (4 * z - 1)); j += 4 * z)
++    {
++      v4flt t0 = *(v4flt *) (src[0] + j + 0 * z);
++      v4flt t1 = *(v4flt *) (src[0] + j + 1 * z);
++      v4flt t2 = *(v4flt *) (src[0] + j + 2 * z);
++      v4flt t3 = *(v4flt *) (src[0] + j + 3 * z);
++      for (i = 1; i < a; ++i)
++	{
++	  t0 += *(v4flt *) (src[i] + j + 0 * z);
++	  t1 += *(v4flt *) (src[i] + j + 1 * z);
++	  t2 += *(v4flt *) (src[i] + j + 2 * z);
++	  t3 += *(v4flt *) (src[i] + j + 3 * z);
++	}
++      *(v4flt *) (dst + j + 0 * z) = t0;
++      *(v4flt *) (dst + j + 1 * z) = t1;
++      *(v4flt *) (dst + j + 2 * z) = t2;
++      *(v4flt *) (dst + j + 3 * z) = t3;
++    }
++  for (; j < n; ++j)
++    {
++      float t = src[0][j];
++      for (i = 1; i < a; ++i)
++	t += src[i][j];
++      dst[j] = t;
++    }
++}
++
++float buffer[64];
++
++int
++main (void)
++{
++  int i;
++  float *dst, *src[2];
++
++  dst = buffer;
++  dst += (-(long int) buffer & (16 * sizeof (float) - 1)) / sizeof (float);
++  src[0] = dst + 16;
++  src[1] = dst + 32;
++  for (i = 0; i < 16; ++i)
++    {
++      src[0][i] = (float) i + 11 * (float) i;
++      src[1][i] = (float) i + 12 * (float) i;
++    }
++  foo (dst, src, 2, 16);
++  for (i = 0; i < 16; ++i)
++    {
++      float e = (float) i + 11 * (float) i + (float) i + 12 * (float) i;
++      if (dst[i] != e)
++	abort ();
++    }
++  return 0;
++}
+2006-03-01  Alexandre Oliva  <aoliva@redhat.com>
+
+	* dwarf2out.c (dwarf2out_stack_adjust): Always track the stack
+	pointer, instead of assuming it is possible to derive the
+	correct args size from a call insn.
+
+--- gcc/dwarf2out.c.orig	2006-03-01 05:13:50.000000000 -0300
++++ gcc/dwarf2out.c	2006-03-01 05:41:38.000000000 -0300
+@@ -1069,26 +1069,6 @@ dwarf2out_stack_adjust (rtx insn)
+   if (prologue_epilogue_contains (insn) || sibcall_epilogue_contains (insn))
+     return;
+ 
+-  if (!flag_asynchronous_unwind_tables && GET_CODE (insn) == CALL_INSN)
+-    {
+-      /* Extract the size of the args from the CALL rtx itself.  */
+-      insn = PATTERN (insn);
+-      if (GET_CODE (insn) == PARALLEL)
+-	insn = XVECEXP (insn, 0, 0);
+-      if (GET_CODE (insn) == SET)
+-	insn = SET_SRC (insn);
+-      if (GET_CODE (insn) != CALL)
+-	abort ();
+-
+-      dwarf2out_args_size ("", INTVAL (XEXP (insn, 1)));
+-      return;
+-    }
+-
+-  /* If only calls can throw, and we have a frame pointer,
+-     save up adjustments until we see the CALL_INSN.  */
+-  else if (!flag_asynchronous_unwind_tables && cfa.reg != STACK_POINTER_REGNUM)
+-    return;
+-
+   if (GET_CODE (insn) == BARRIER)
+     {
+       /* When we see a BARRIER, we know to reset args_size to 0.  Usually
+@@ -1111,9 +1091,20 @@ dwarf2out_stack_adjust (rtx insn)
+ 	if (GET_CODE (XVECEXP (PATTERN (insn), 0, i)) == SET)
+ 	  offset += stack_adjust_offset (XVECEXP (PATTERN (insn), 0, i));
+     }
++  else if (GET_CODE (insn) == CALL_INSN)
++    offset = 0;
+   else
+     return;
+ 
++  /* We handle this separately because we want stack adjustments in a
++     CALL_INSN to be handled.  */;
++  if (GET_CODE (insn) == CALL_INSN)
++    {
++      /* If only calls can throw, adjust args_size only at call sites.  */
++      if (!flag_asynchronous_unwind_tables)
++	dwarf2out_args_size ("", args_size);
++    }
++
+   if (offset == 0)
+     return;
+ 
+@@ -1128,6 +1119,16 @@ dwarf2out_stack_adjust (rtx insn)
+   if (args_size < 0)
+     args_size = 0;
+ 
++  /* If only calls can throw and we have a frame pointer, we'll save
++     up adjustments until we see the CALL_INSN.  We used to return
++     early and derive args_size from NARGS in the CALL_INSN itself,
++     but that doesn't compute the right value if we have nested call
++     expansions, e.g., stack adjustments for a call have already been
++     emitted, and then we issue another call to compute an argument
++     for the enclosing call (i.e., bar (foo ())).  */
++  if (!flag_asynchronous_unwind_tables && cfa.reg != STACK_POINTER_REGNUM)
++    return;
++
+   label = dwarf2out_cfi_label ();
+   def_cfa_1 (label, &cfa);
+   dwarf2out_args_size (label, args_size);
+2006-02-25  Alexandre Oliva  <aoliva@redhat.com>
+
+	* varasm.c (copy_constant): Handle VECTOR_CST.
+
+	* gcc.dg/altivec-23.c: New test.
+
+--- gcc/varasm.c	2006-02-25 03:52:54.000000000 -0300
++++ gcc/varasm.c	2006-02-25 03:54:56.000000000 -0300
+@@ -2464,6 +2464,19 @@ copy_constant (tree exp)
+ 	return copy;
+       }
+ 
++    case VECTOR_CST:
++      {
++	tree copy = copy_node (exp);
++	tree list = copy_list (TREE_VECTOR_CST_ELTS (exp));
++	tree tail;
++
++	TREE_VECTOR_CST_ELTS (copy) = list;
++	for (tail = list; tail; tail = TREE_CHAIN (tail))
++	  TREE_VALUE (tail) = copy_constant (TREE_VALUE (tail));
++
++	return copy;
++      }
++
+     default:
+       {
+ 	tree t;
+--- gcc/testsuite/gcc.dg/altivec-23.c	1970-01-01 00:00:00.000000000 +0000
++++ gcc/testsuite/gcc.dg/altivec-23.c	2006-02-25 04:10:36.000000000 -0300
+@@ -0,0 +1,25 @@
++/* Verify that it is possible to define variables of composite types
++   containing vector types.  We used to crash handling the
++   initializer of automatic ones.  */
++
++/* { dg-do compile { target powerpc*-*-* } } */
++/* { dg-xfail-if "" { "powerpc-ibm-aix*" } { "-maltivec" } { "" } } */
++/* { dg-options "-maltivec -mabi=altivec" } */
++
++#include <altivec.h>
++
++typedef int bt;
++typedef vector bt vt;
++typedef struct { vt x; bt y[sizeof(vt) / sizeof (bt)]; } st;
++#define INIT { 1, 2, 3, 4 }
++
++void f ()
++{
++  vt x = INIT;
++  vt y[1] = { INIT };
++  st s = { INIT, INIT };
++}
++
++vt x = INIT;
++vt y[1] = { INIT };
++st s = { INIT, INIT };
+2006-12-08  Alexandre Oliva  <aoliva@redhat.com>
+
+	* g++.dg/template/array17.C: New test.
+
+2006-10-27  Alexandre Oliva  <aoliva@redhat.com>
+
+	* typeck.c (non_reference): Don't dereference NULL type.
+
+--- gcc/cp/typeck.c.orig	2005-11-21 11:56:03.000000000 -0200
++++ gcc/cp/typeck.c	2006-10-27 03:28:04.000000000 -0300
+@@ -6443,7 +6443,7 @@ casts_away_constness (tree t1, tree t2)
+ tree
+ non_reference (tree t)
+ {
+-  if (TREE_CODE (t) == REFERENCE_TYPE)
++  if (t != NULL_TREE && TREE_CODE (t) == REFERENCE_TYPE)
+     t = TREE_TYPE (t);
+   return t;
+ }
+--- gcc/testsuite/g++.dg/template/array17.C	2006-10-04 16:28:56.502613000 +0200
++++ gcc/testsuite/g++.dg/template/array17.C	2006-12-08 12:38:27.000000000 +0100
+@@ -0,0 +1,23 @@
++// { dg-do compile }
++
++template <typename T>
++struct V {
++  T& operator[](int);
++};
++
++struct S {
++  S operator +(int);
++  template <typename T> T value();
++};
++
++template <typename T>
++void R (T v)
++{
++  v[(S() + 0).template value<int>()][0] = 0;
++}
++
++int
++main ()
++{
++  R(V<V<int> >());
++}
+2006-12-08  Jakub Jelinek  <jakub@redhat.com>
+
+	* g++.dg/opt/ifcvt1.C: New test.
+
+2005-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* ifcvt.c (noce_get_alt_condition): Use prev_nonnote_insn.
+	(noce_try_abs): Negate if the comparison is reversed.
+	Look only one instruction backwards for a REG_EQUAL note.
+
+	* gcc.dg/ifcvt-fabs-1.c: New test.
+
+--- gcc/ifcvt.c.orig	2005-11-21 11:43:21.000000000 -0200
++++ gcc/ifcvt.c	2006-10-26 02:21:07.000000000 -0300
+@@ -1406,7 +1406,7 @@ noce_get_alt_condition (struct noce_if_i
+       rtx prev_insn;
+ 
+       /* First, look to see if we put a constant in a register.  */
+-      prev_insn = PREV_INSN (if_info->cond_earliest);
++      prev_insn = prev_nonnote_insn (if_info->cond_earliest);
+       if (prev_insn
+ 	  && INSN_P (prev_insn)
+ 	  && GET_CODE (PATTERN (prev_insn)) == SET)
+@@ -1642,25 +1642,30 @@ noce_try_abs (struct noce_if_info *if_in
+   if (rtx_equal_p (XEXP (cond, 0), b))
+     c = XEXP (cond, 1);
+   else if (rtx_equal_p (XEXP (cond, 1), b))
+-    c = XEXP (cond, 0);
++    {
++      c = XEXP (cond, 0);
++      negate = !negate;
++    }
+   else
+     return FALSE;
+ 
+-  /* Verify that C is zero.  Search backward through the block for
+-     a REG_EQUAL note if necessary.  */
++  /* Verify that C is zero.  Search one step backward for a
++     REG_EQUAL note or a simple source if necessary.  */
+   if (REG_P (c))
+     {
+-      rtx insn, note = NULL;
+-      for (insn = earliest;
+-	   insn != BB_HEAD (if_info->test_bb);
+-	   insn = PREV_INSN (insn))
+-	if (INSN_P (insn)
+-	    && ((note = find_reg_note (insn, REG_EQUAL, c))
+-		|| (note = find_reg_note (insn, REG_EQUIV, c))))
+-	  break;
+-      if (! note)
++      rtx set, insn = prev_nonnote_insn (earliest);
++      if (insn
++	  && (set = single_set (insn))
++	  && rtx_equal_p (SET_DEST (set), c))
++	{
++	  rtx note = find_reg_equal_equiv_note (insn);
++	  if (note)
++	    c = XEXP (note, 0);
++	  else
++	    c = SET_SRC (set);
++	}
++      else
+ 	return FALSE;
+-      c = XEXP (note, 0);
+     }
+   if (GET_CODE (c) == MEM
+       && GET_CODE (XEXP (c, 0)) == SYMBOL_REF
+--- gcc/testsuite/gcc.dg/ifcvt-fabs-1.c	1970-01-01 00:00:00.000000000 +0000
++++ gcc/testsuite/gcc.dg/ifcvt-fabs-1.c	2006-10-26 02:20:24.000000000 -0300
+@@ -0,0 +1,21 @@
++/* { dg-do run } */
++/* { dg-options "-O" } */
++/* { dg-options "-O -march=i686" { target i686-*-* } } */
++
++extern void abort(void);
++
++float foo(float f)
++{
++  if (f < 0.0f)
++    f = -f;
++
++  return f;
++}
++
++int main(void)
++{
++  if (foo (-1.0f) != 1.0f)
++    abort ();
++
++  return 0;
++}
+--- gcc/testsuite/g++.dg/opt/ifcvt1.C	2006-10-04 16:28:56.502613000 +0200
++++ gcc/testsuite/g++.dg/opt/ifcvt1.C	2006-12-08 12:23:23.000000000 +0100
+@@ -0,0 +1,17 @@
++// { dg-do compile }
++// { dg-options "-O2 -fnon-call-exceptions" }
++
++struct S { ~S () throw () {} };
++double bar ();
++
++int
++foo ()
++{
++  S a;
++  int i = 0;
++  double c = bar ();
++  c = c < 0 ? -c : c;
++  if (c <= 1.e-8)
++    i += 24;
++  return i;
++}
+2007-04-02  Jakub Jelinek  <jakub@redhat.com>
+
+	* expr.c (expand_expr_real) <case COMPLEX_EXPR>: Force op1
+	into register if target overlaps with op1.
+
+	* g77.f-torture/execute/20070402.f: New test.
+
+--- gcc/expr.c.jj	2006-10-05 00:37:01.000000000 +0200
++++ gcc/expr.c	2007-04-02 13:28:52.000000000 +0200
+@@ -8949,6 +8949,9 @@ expand_expr_real (tree exp, rtx target, 
+ 
+ 	if (! target)
+ 	  target = gen_reg_rtx (TYPE_MODE (TREE_TYPE (exp)));
++	else if (GET_CODE (target) == MEM
++		 && reg_overlap_mentioned_p (target, op1))
++	  op1 = force_reg (mode, op1);
+ 
+ 	start_sequence ();
+ 
+--- gcc/testsuite/g77.f-torture/execute/20070402.f.jj	2007-04-02 13:29:51.000000000 +0200
++++ gcc/testsuite/g77.f-torture/execute/20070402.f	2007-04-02 12:11:00.000000000 +0200
+@@ -0,0 +1,21 @@
++      program rh233941
++      implicit none
++      complex*16 z
++      z = dcmplx(1.0, 2.0)
++      call sub(z)
++      stop
++      end program rh233941
++
++      subroutine sub(z)
++      implicit none
++      complex*16 z
++      z = dcmplx(-dimag(z), dreal(z))
++      call sub2(z)
++      return
++      end subroutine sub
++
++      subroutine sub2(z)
++      implicit none
++      complex*16 z
++      if (dreal(z).ne.-2.0.or.dimag(z).ne.1.0) call abort
++      end subroutine sub2
+2007-01-24   Steve LoBasso <slobasso@yahoo.com>
+	     Paolo Carlini  <pcarlini@suse.de>
+
+	* include/bits/deque.tcc (deque<>::erase(iterator, iterator)):
+	Fix condition.
+	* testsuite/23_containers/deque/modifiers/erase/3.cc: New.
+
+--- libstdc++-v3/include/bits/deque.tcc	(revision 121146)
++++ libstdc++-v3/include/bits/deque.tcc	(revision 121147)
+@@ -140,7 +140,7 @@ namespace _GLIBCXX_STD
+ 	{
+ 	  const difference_type __n = __last - __first;
+ 	  const difference_type __elems_before = __first - this->_M_impl._M_start;
+-	  if (static_cast<size_type>(__elems_before) < (size() - __n) / 2)
++	  if (static_cast<size_type>(__elems_before) <= (size() - __n) / 2)
+ 	    {
+ 	      std::copy_backward(this->_M_impl._M_start, __first, __last);
+ 	      iterator __new_start = this->_M_impl._M_start + __n;
+--- libstdc++-v3/testsuite/23_containers/deque/modifiers/erase/3.cc	(revision 0)
++++ libstdc++-v3/testsuite/23_containers/deque/modifiers/erase/3.cc	(revision 121147)
+@@ -0,0 +1,52 @@
++// Copyright (C) 2007 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 2, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// You should have received a copy of the GNU General Public License along
++// with this library; see the file COPYING.  If not, write to the Free
++// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
++// USA.
++
++// 23.2.1.3 deque modifiers
++
++#include <deque>
++#include <testsuite_hooks.h>
++
++void erase(size_t num_elm, size_t elm_strt, size_t elm_end)
++{
++  bool test __attribute__((unused)) = true;
++  using __gnu_test::copy_tracker;
++  using __gnu_test::assignment_operator;
++
++  std::deque<copy_tracker> x(num_elm);
++  copy_tracker::reset();
++  
++  x.erase(x.begin() + elm_strt, x.begin() + elm_end);
++  
++  const size_t min_num_cpy = std::min(elm_strt, num_elm - elm_end);
++  VERIFY( assignment_operator::count() == min_num_cpy );
++}
++
++// http://gcc.gnu.org/ml/libstdc++/2007-01/msg00098.html
++void test01()
++{
++  for (size_t num_elm = 0; num_elm <= 10; ++num_elm)
++    for (size_t elm_strt = 0; elm_strt <= num_elm; ++elm_strt)
++      for (size_t elm_end = elm_strt; elm_end <= num_elm; ++elm_end)
++	erase(num_elm, elm_strt, elm_end);
++}
++
++int main()
++{
++  test01();
++  return 0;
++}
+2007-04-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* fr.po: Use %s rather than %S.
+	* rw.po: Comment out translations with bogus format
+	strings.
+
+--- gcc/po/fr.po.jj	2006-10-05 00:33:36.000000000 +0200
++++ gcc/po/fr.po	2007-04-13 00:23:29.000000000 +0200
+@@ -17100,7 +17100,7 @@ msgstr "%s liste d'expressions traitée c
+ 
+ #: cp/typeck.c:4490
+ msgid "%s from type `%T' to type `%T' casts away constness"
+-msgstr "%S à partir du « %T » vers le type « %T » provoque un transtypage sans constante"
++msgstr "%s à partir du « %T » vers le type « %T » provoque un transtypage sans constante"
+ 
+ #: cp/typeck.c:4692
+ msgid "invalid static_cast from type `%T' to type `%T'"
+2007-04-21  Alexandre Oliva  <aoliva@redhat.com>
+
+	* gcse.c (store_killed_in_insn): Handle PARALLELs.
+	(store_killed_in_pat): New.
+
+	* gcc.dg/movsi-sm-1.c: New.
+
+--- gcc/gcse.c.jj	2007-02-23 21:29:12.000000000 +0100
++++ gcc/gcse.c	2007-07-18 20:41:08.000000000 +0200
+@@ -7427,6 +7427,40 @@ find_loads (rtx x, rtx store_pattern, in
+   return ret;
+ }
+ 
++static inline bool
++store_killed_in_pat (rtx x, rtx pat, int after)
++{
++  if (GET_CODE (pat) == SET)
++    {
++      rtx dest = SET_DEST (pat);
++
++      if (GET_CODE (dest) == SIGN_EXTRACT
++	  || GET_CODE (dest) == ZERO_EXTRACT)
++	dest = XEXP (dest, 0);
++
++      /* Check for memory stores to aliased objects.  */
++      if (GET_CODE (dest) == MEM
++	  && !expr_equiv_p (dest, x))
++	{
++	  if (after)
++	    {
++	      if (output_dependence (dest, x))
++		return true;
++	    }
++	  else
++	    {
++	      if (output_dependence (x, dest))
++		return true;
++	    }
++	}
++    }
++
++  if (find_loads (pat, x, after))
++    return true;
++
++  return false;
++}
++
+ /* Check if INSN kills the store pattern X (is aliased with it).
+    AFTER is true if we are checking the case when store X occurs
+    after the insn.  Return true if it it does.  */
+@@ -7434,7 +7468,7 @@ find_loads (rtx x, rtx store_pattern, in
+ static bool
+ store_killed_in_insn (rtx x, rtx x_regs, rtx insn, int after)
+ {
+-  rtx reg, base, note;
++  rtx reg, base, note, pat;
+ 
+   if (!INSN_P (insn))
+     return false;
+@@ -7461,33 +7495,20 @@ store_killed_in_insn (rtx x, rtx x_regs,
+       return false;
+     }
+ 
+-  if (GET_CODE (PATTERN (insn)) == SET)
++  pat = PATTERN (insn);
++  if (GET_CODE (pat) == SET)
+     {
+-      rtx pat = PATTERN (insn);
+-      rtx dest = SET_DEST (pat);
+-
+-      if (GET_CODE (dest) == SIGN_EXTRACT
+-	  || GET_CODE (dest) == ZERO_EXTRACT)
+-	dest = XEXP (dest, 0);
+-
+-      /* Check for memory stores to aliased objects.  */
+-      if (GET_CODE (dest) == MEM
+-	  && !expr_equiv_p (dest, x))
+-	{
+-	  if (after)
+-	    {
+-	      if (output_dependence (dest, x))
+-		return true;
+-	    }
+-	  else
+-	    {
+-	      if (output_dependence (x, dest))
+-		return true;
+-	    }
+-	}
+-      if (find_loads (SET_SRC (pat), x, after))
++      if (store_killed_in_pat (x, pat, after))
+ 	return true;
+     }
++  else if (GET_CODE (pat) == PARALLEL)
++    {
++      int i;
++
++      for (i = 0; i < XVECLEN (pat, 0); i++)
++	if (store_killed_in_pat (x, XVECEXP (pat, 0, i), after))
++	  return true;
++    }
+   else if (find_loads (PATTERN (insn), x, after))
+     return true;
+ 
+--- gcc/testsuite/gcc.dg/movsi-sm-1.c.jj	2007-07-18 20:58:08.000000000 +0200
++++ gcc/testsuite/gcc.dg/movsi-sm-1.c	2007-07-18 21:01:52.000000000 +0200
+@@ -0,0 +1,35 @@
++/* { dg-do run } */
++/* { dg-options "-O2" } */
++/* { dg-options "-O2 -mtune=i386" { target { { i?86-*-* x86_64-*-* } && ilp32 } } } */
++
++int ret = 1;
++char buf[128];
++
++void
++__attribute__((noinline))
++bug (int arg)
++{
++  char str[28];
++
++  __builtin_memcpy (str, "Bugged!", 8);
++
++  if (arg & 0200)
++    {
++      __builtin_memcpy (str, "This is what we should get!", 28);
++      ret = 0;
++    }
++
++  if (arg & 0100)
++    __builtin_memcpy (str, "Broken!", 8);
++
++  __builtin_sprintf (buf, "%s\n", str);
++}
++
++int
++main ()
++{
++  bug (0200);
++  if (ret)
++    return ret;
++  return __builtin_strcmp (buf, "This is what we should get!\n") != 0;
++}
+2007-06-08  Jatin Nansi  <jnansi@redhat.com>
+
+	* config/locale/ieee_1003.1-2001/codecvt_specializations.h: Make sure
+	_M_int_enc and _M_ext_enc are '\0' terminated.
+
+--- libstdc++-v3/config/locale/ieee_1003.1-2001/codecvt_specializations.h.jj	2007-02-23 21:29:34.000000000 +0100
++++ libstdc++-v3/config/locale/ieee_1003.1-2001/codecvt_specializations.h	2007-07-19 14:20:20.000000000 +0200
+@@ -83,8 +83,10 @@
+ 			  int __ibom = 0, int __ebom = 0)
+     : _M_in_desc(0), _M_out_desc(0), _M_ext_bom(__ebom), _M_int_bom(__ibom)
+     {
+-      strncpy(_M_int_enc, __int, _S_max_size);
+-      strncpy(_M_ext_enc, __ext, _S_max_size);
++      strncpy(_M_int_enc, __int, _S_max_size - 1);
++      strncpy(_M_ext_enc, __ext, _S_max_size - 1);
++      _M_int_enc[_S_max_size - 1] = '\0';
++      _M_ext_enc[_S_max_size - 1] = '\0';
+       _M_init();
+     }
+ 
+@@ -98,8 +100,10 @@
+     // information.
+     __enc_traits(const __enc_traits& __obj): _M_in_desc(0), _M_out_desc(0)
+     {
+-      strncpy(_M_int_enc, __obj._M_int_enc, _S_max_size);
+-      strncpy(_M_ext_enc, __obj._M_ext_enc, _S_max_size);
++      strncpy(_M_int_enc, __obj._M_int_enc, _S_max_size - 1);
++      strncpy(_M_ext_enc, __obj._M_ext_enc, _S_max_size - 1);
++      _M_int_enc[_S_max_size - 1] = '\0';
++      _M_ext_enc[_S_max_size - 1] = '\0';
+       _M_ext_bom = __obj._M_ext_bom;
+       _M_int_bom = __obj._M_int_bom;
+       _M_destroy();
+@@ -110,8 +114,10 @@
+     __enc_traits&
+     operator=(const __enc_traits& __obj)
+     {
+-      strncpy(_M_int_enc, __obj._M_int_enc, _S_max_size);
+-      strncpy(_M_ext_enc, __obj._M_ext_enc, _S_max_size);
++      strncpy(_M_int_enc, __obj._M_int_enc, _S_max_size - 1);
++      strncpy(_M_ext_enc, __obj._M_ext_enc, _S_max_size - 1);
++      _M_int_enc[_S_max_size - 1] = '\0';
++      _M_ext_enc[_S_max_size - 1] = '\0';
+       _M_ext_bom = __obj._M_ext_bom;
+       _M_int_bom = __obj._M_int_bom;
+       _M_destroy();
