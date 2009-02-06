@@ -3,7 +3,7 @@
 %define		_enable_debug_packages	0
 #
 Summary:	GNU Compiler Collection: the C compiler and shared files
-Summary(pl):	Kolekcja kompilatorów GNU: kompilator C i pliki wspó³dzielone
+Summary(pl.UTF-8):	Kolekcja kompilatorÃ³w GNU: kompilator C i pliki wspÃ³Å‚dzielone
 Name:		compat-gcc-34
 Version:	3.4.6
 Release:	1
@@ -48,17 +48,17 @@ This package contains the C compiler and some files shared by various
 parts of the GNU Compiler Collection. In order to use another GCC
 compiler you will need to install the appropriate subpackage.
 
-%description -l pl
-Kompilator, posiadaj±cy du¿e mo¿liwo¶ci optymalizacyjne niezbêdne do
+%description -l pl.UTF-8
+Kompilator, posiadajÄ…cy duÅ¼e moÅ¼liwoÅ›ci optymalizacyjne niezbÄ™dne do
 wyprodukowania szybkiego i stabilnego kodu wynikowego.
 
-Ten pakiet zawiera kompilator C i pliki wspó³dzielone przez ró¿ne
-czê¶ci kolekcji kompilatorów GNU (GCC). ¯eby u¿ywaæ innego kompilatora
-z GCC, trzeba zainstalowaæ odpowiedni podpakiet.
+Ten pakiet zawiera kompilator C i pliki wspÃ³Å‚dzielone przez rÃ³Å¼ne
+czÄ™Å›ci kolekcji kompilatorÃ³w GNU (GCC). Å»eby uÅ¼ywaÄ‡ innego kompilatora
+z GCC, trzeba zainstalowaÄ‡ odpowiedni podpakiet.
 
 %package c++
 Summary:	C++ support for gcc
-Summary(pl):	Obs³uga C++ dla gcc
+Summary(pl.UTF-8):	ObsÅ‚uga C++ dla gcc
 Group:		Development/Languages
 Obsoletes:	compat-gcc-34-libstdc++
 Obsoletes:	compat-gcc-34-libstdc++-devel
@@ -70,9 +70,9 @@ This package adds C++ support to the GNU Compiler Collection. It
 includes support for most of the current C++ specification, including
 templates and exception handling.
 
-%description c++ -l pl
-Ten pakiet dodaje obs³ugê C++ do kompilatora gcc. Ma wsparcie dla
-du¿ej ilo¶ci obecnych specyfikacji C++.
+%description c++ -l pl.UTF-8
+Ten pakiet dodaje obsÅ‚ugÄ™ C++ do kompilatora gcc. Ma wsparcie dla
+duÅ¼ej iloÅ›ci obecnych specyfikacji C++.
 
 %prep
 %setup -q -n gcc-%{version}
