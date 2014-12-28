@@ -24,7 +24,7 @@ BuildRequires:	binutils >= 2:2.15.91.0.2
 BuildRequires:	bison
 BuildRequires:	fileutils >= 4.0.41
 BuildRequires:	flex
-BuildRequires:	gettext-devel
+BuildRequires:	gettext-tools
 BuildRequires:	glibc-devel >= 2.2.5-20
 BuildRequires:	perl-devel
 BuildRequires:	texinfo >= 4.1
